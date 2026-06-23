@@ -1,0 +1,152 @@
+# syntax=docker/dockerfile:1.7
+# =============================================================================
+# Wiii backend - production multi-stage build with uv.
+#
+# Stage 1 (builder): full python:3.11 + build tools, install all deps to /venv.
+# Stage 2 (runtime): python:3.11-slim, copy only /venv, app, web assets,
+# and the shared Playwright browser cache.
+#
+# References:
+# - https://docs.astral.sh/uv/guides/integration/docker/
+# - https://docs.astral.sh/uv/guides/integration/pytorch/
+# - https://docs.docker.com/build/cache/optimize/
+#
+# Production is currently a CPU-only GCP VM. Keep UV_TORCH_BACKEND=cpu unless
+# the target host has an explicit GPU plan; otherwise Linux resolves CUDA wheels
+# and bakes several GB of unused nvidia/cu* runtime packages into /venv.
+# Local measurement with INSTALL_PRECISION_DOCS=true: ~13GB -> ~5.4GB image.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1 - builder: install all dependencies into /venv
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim AS builder
+
+ARG INSTALL_PRECISION_DOCS=false
+ARG UV_TORCH_BACKEND=cpu
+
+# uv binary (Astral package manager).
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /usr/local/bin/
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/venv \
+    UV_PYTHON=/usr/local/bin/python3.11 \
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_TORCH_BACKEND=${UV_TORCH_BACKEND} \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Build deps (only in builder stage, not runtime).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+        gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Layer 1: deps only (rarely changes, maximizes Docker layer cache hits).
+COPY maritime-ai-service/requirements.txt ./
+COPY maritime-ai-service/requirements-precision.txt ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv /venv && \
+    if [ "$INSTALL_PRECISION_DOCS" = "true" ]; then \
+        uv pip install --python /venv/bin/python --requirement requirements-precision.txt; \
+    else \
+        uv pip install --python /venv/bin/python --requirement requirements.txt; \
+    fi
+
+# Layer 2: scrape extras. Separate RUN bypasses pip resolver lxml conflict.
+# crawl4ai 0.8.6 pins lxml~=5.3, ours needs >=6.1. With deps already installed,
+# uv emits a warning instead of failing (same behavior as pip --no-deps).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /venv/bin/python \
+        crawl4ai>=0.8.6 \
+        scrapling>=0.4.7 \
+    || (uv pip install --python /venv/bin/python --no-deps \
+            crawl4ai>=0.8.6 scrapling>=0.4.7 && \
+        uv pip install --python /venv/bin/python \
+            pyOpenSSL psutil aiosqlite fake-useragent xxhash rank-bm25 \
+            cssselect tiktoken playwright-stealth fastuuid nltk \
+            huggingface-hub tokenizers fsspec patchright)
+
+# Strip __pycache__ + .pyc to slim the venv (keeping compile=1 above means
+# bytecode is regenerated on first import in runtime, but .pyc is small;
+# we strip *.dist-info and tests instead which are larger and useless at runtime).
+RUN find /venv -type d -name "tests" -prune -exec rm -rf {} + 2>/dev/null || true && \
+    find /venv -type d -name "test" -prune -exec rm -rf {} + 2>/dev/null || true && \
+    find /venv -type f -name "*.pyc" -delete 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# Stage 2 - runtime: minimal slim image with only what's needed at run time
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim AS runtime
+
+ARG INSTALL_PRECISION_DOCS=false
+
+# Runtime libs for Playwright Chromium (no build tools needed).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ffmpeg \
+        libgomp1 \
+        libgl1 \
+        libpq5 \
+        libglib2.0-0 \
+        libnss3 \
+        libnspr4 \
+        libdbus-1-3 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libcups2 \
+        libdrm2 \
+        libxkbcommon0 \
+        libatspi2.0-0 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxrandr2 \
+        libgbm1 \
+        libpango-1.0-0 \
+        libcairo2 \
+        libasound2 \
+    && if [ "$INSTALL_PRECISION_DOCS" = "true" ]; then \
+        apt-get install -y --no-install-recommends \
+            libreoffice-writer \
+            libreoffice-calc \
+            libreoffice-impress; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the pre-built venv from builder (deps already installed + bytecode-compiled).
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH" \
+    PYTHONPATH="/venv/lib/python3.11/site-packages" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DOCLING_LIBREOFFICE_CMD=/usr/bin/soffice \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+WORKDIR /app
+
+# Non-root user and shared Playwright cache. Installing directly into
+# /ms-playwright avoids baking a second browser copy under /root/.cache.
+RUN useradd --create-home --shell /bin/bash appuser && \
+    mkdir -p /app /app-embed /app-web /ms-playwright && \
+    chown -R appuser:appuser /app /app-embed /app-web /ms-playwright && \
+    (/venv/bin/python -m playwright install chromium 2>/dev/null || true) && \
+    chown -R appuser:appuser /ms-playwright
+
+# App code (changes most frequently, put last for layer cache).
+COPY --chown=appuser:appuser maritime-ai-service/ ./
+COPY --chown=appuser:appuser wiii-desktop/dist-embed /app-embed
+COPY --chown=appuser:appuser wiii-desktop/dist-web /app-web
+
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
+    CMD curl -f http://localhost:8000/api/v1/health/live || exit 1
+
+CMD ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "180"]

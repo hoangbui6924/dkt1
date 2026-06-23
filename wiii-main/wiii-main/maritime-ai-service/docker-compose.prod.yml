@@ -1,0 +1,551 @@
+# =============================================================================
+# WIII PRODUCTION DOCKER COMPOSE
+# Sprint 83: Production-ready deployment with resource limits and security
+# Sprint 165: Neo4j opt-in via profiles (enable_neo4j=False by default)
+# Sprint 175: Nginx reverse proxy + subdomain routing + SPA serving
+# Sprint 188: Soul AGI profile (ollama + cloudflared for autonomous deployment)
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml --profile neo4j up -d      # With Neo4j
+#   docker compose -f docker-compose.prod.yml --profile soul-agi up -d   # With Soul AGI (Ollama + Cloudflared)
+#   docker compose -f docker-compose.prod.yml --profile soul-agi --profile neo4j up -d  # Full stack
+#
+# Prerequisites:
+#   - .env.production file with ALL required secrets
+#   - API_KEY, JWT_SECRET_KEY, and the key for LLM_PROVIDER must be set
+#   - NVIDIA_API_KEY is required for the current NVIDIA product lane
+#   - GOOGLE_API_KEY is required when using Google chat or Gemini embeddings
+#   - POSTGRES_PASSWORD must be changed from defaults
+#   - WIII_APP_IMAGE and WIII_NGINX_IMAGE must point to published production images
+#   - DNS: *.holilihu.online wildcard A record pointing to this server
+#   - Soul AGI: Set ENABLE_LIVING_AGENT=true, CF_TUNNEL_TOKEN for cloudflared
+# =============================================================================
+
+services:
+  # =============================================================================
+  # NGINX — Reverse Proxy + SPA Serving + Subdomain Routing (Sprint 175)
+  # =============================================================================
+  nginx:
+    image: ${WIII_NGINX_IMAGE:-ghcr.io/meiiie/wiii-nginx:main}
+    container_name: wiii-nginx
+    ports:
+      - "${NGINX_HTTP_PORT:-8080}:80"
+    volumes:
+      - nginx_logs:/var/log/nginx
+    environment:
+      - EMBED_ALLOWED_ORIGINS=${EMBED_ALLOWED_ORIGINS:-https://holilihu.online}
+      - DOMAIN=${DOMAIN:-wiii.holilihu.online}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    cpus: "${NGINX_CPU_LIMIT:-0.25}"
+    mem_limit: "${NGINX_MEM_LIMIT:-192M}"
+    deploy:
+      resources:
+        limits:
+          cpus: "${NGINX_CPU_LIMIT:-0.25}"
+          memory: "${NGINX_MEM_LIMIT:-192M}"
+        reservations:
+          cpus: "0.1"
+          memory: "64M"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # =============================================================================
+  # FASTAPI APP — Production (no hot-reload, Gunicorn workers)
+  # =============================================================================
+  app:
+    image: ${WIII_APP_IMAGE:-ghcr.io/meiiie/wiii-app:main}
+    # Sprint 232: Removed container_name to allow docker compose scale
+    # container_name: wiii-app
+    # Sprint 232: Removed host port mapping (Nginx connects via internal network)
+    # Re-enabled for local-only stack so desktop UI on host can reach the API.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    env_file:
+      - .env.production
+    environment:
+      # Default to production but let env_file override (Issue #88: allows
+      # local prod-stack-with-dev-shortcuts when ENVIRONMENT=development is
+      # set in .env.production). Real prod deployments always have
+      # ENVIRONMENT=production in their .env file, so this stays safe.
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      # Sprint 232: Connect via PgBouncer for connection pooling at scale
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wiii}:${POSTGRES_PASSWORD}@${DB_HOST:-postgres}:5432/${POSTGRES_DB:-wiii_ai}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-wiii}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-wiii-docs}
+      - MINIO_SECURE=false
+      - VALKEY_URL=redis://valkey:6379/0
+      # Sprint 175: Subdomain org routing
+      - SUBDOMAIN_BASE_DOMAIN=${SUBDOMAIN_BASE_DOMAIN:-}
+      - CORS_ORIGIN_REGEX=${CORS_ORIGIN_REGEX:-}
+      - ENABLE_MULTI_TENANT=${ENABLE_MULTI_TENANT:-false}
+      - ASYNC_POOL_MAX_SIZE=${ASYNC_POOL_MAX_SIZE:-20}
+      # Teacher document-to-course precision lane. Production images install
+      # Docling through requirements-precision.txt; these envs keep the runtime
+      # explicit and surface parser warnings if precision cannot be honored.
+      - DOCUMENT_CONTEXT_PARSER_MODE=${DOCUMENT_CONTEXT_PARSER_MODE:-precision}
+      - USE_DOCLING_FOR_COURSE_GEN=${USE_DOCLING_FOR_COURSE_GEN:-true}
+      - DOCLING_VLM_BACKEND=${DOCLING_VLM_BACKEND:-none}
+      - DOCLING_VLM_API_URL=${DOCLING_VLM_API_URL:-}
+      - DOCLING_VLM_API_KEY=${DOCLING_VLM_API_KEY:-}
+      - DOCLING_VLM_MODEL=${DOCLING_VLM_MODEL:-gemini-3.1-flash-lite}
+      - DOCLING_LIBREOFFICE_CMD=${DOCLING_LIBREOFFICE_CMD:-/usr/bin/soffice}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    command: >
+      gunicorn app.main:app
+      --bind 0.0.0.0:8000
+      --workers ${GUNICORN_WORKERS:-2}
+      --worker-class uvicorn.workers.UvicornWorker
+      --timeout 120
+      --graceful-timeout 30
+      --keep-alive 5
+      --max-requests 1000
+      --max-requests-jitter 50
+      --access-logfile -
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    cpus: "${APP_CPU_LIMIT:-1.5}"
+    mem_limit: "${APP_MEM_LIMIT:-4G}"
+    deploy:
+      # Single-node default: keep replicas/workers conservative. Increase only
+      # after moving database/cache/object storage off this VM.
+      replicas: ${APP_REPLICAS:-1}
+      resources:
+        limits:
+          cpus: "${APP_CPU_LIMIT:-1.5}"
+          memory: "${APP_MEM_LIMIT:-4G}"
+        reservations:
+          cpus: "0.5"
+          memory: "1G"
+    # Phase 35 — healthcheck tuned for slow LLM provider paths.
+    # NVIDIA NIM free tier can hold a worker thread for 60-120s on complex
+    # synthesis. With prior settings (interval=30s, retries=5, timeout=10s)
+    # a 90-second pipeline would race against the healthcheck loop and
+    # occasionally trigger container restart mid-stream → user sees tools
+    # complete but answer text never arrives. Tuning rationale:
+    #   - interval bumped 30→45s: less likely to overlap with active turn
+    #   - timeout bumped 10→15s: /health/live should always respond fast,
+    #     but guard against transient main-loop blocking by sync compute
+    #   - start_period bumped 90→180s: NVIDIA cold start + lazy imports
+    #     can take >120s on first request after container boot
+    #   - retries kept at 5: total failure budget = 5 × 45s = 225s before
+    #     unhealthy mark. Combined with 180s start_period → 405s grace.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/live"]
+      interval: 45s
+      timeout: 15s
+      start_period: 180s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # =============================================================================
+  # POSTGRESQL — Production (resource limits, no exposed ports by default)
+  # =============================================================================
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: wiii-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wiii}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-wiii_ai}
+    # No external ports exposed in production (access via internal network only)
+    # Uncomment for maintenance access:
+    # ports:
+    #   - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db:/docker-entrypoint-initdb.d:ro
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./backups:/backups
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    shm_size: 256m  # Shared memory for PG (default 64m is too small for shared_buffers=384MB)
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    cpus: "${POSTGRES_CPU_LIMIT:-1.0}"
+    mem_limit: "${POSTGRES_MEM_LIMIT:-1536M}"
+    deploy:
+      resources:
+        limits:
+          cpus: "${POSTGRES_CPU_LIMIT:-1.0}"
+          memory: "${POSTGRES_MEM_LIMIT:-1536M}"
+        reservations:
+          cpus: "0.25"
+          memory: "512M"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wiii} -d ${POSTGRES_DB:-wiii_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────────
+  # PostgreSQL Backup (Production Hardening)
+  # Daily pg_dump at 20:00 UTC (3 AM UTC+7), 30-day local retention
+  # ─────────────────────────────────────────────────
+  pg-backup:
+    image: postgres:16-alpine
+    entrypoint: /bin/sh
+    command: >
+      -c "while true; do
+        NOW_HOUR=$$(date -u +%H | sed 's/^0*//');
+        NOW_MINUTE=$$(date -u +%M | sed 's/^0*//');
+        NOW_SECOND=$$(date -u +%S | sed 's/^0*//');
+        [ -n \"$$NOW_HOUR\" ] || NOW_HOUR=0;
+        [ -n \"$$NOW_MINUTE\" ] || NOW_MINUTE=0;
+        [ -n \"$$NOW_SECOND\" ] || NOW_SECOND=0;
+        NOW_TOTAL=$$((NOW_HOUR * 3600 + NOW_MINUTE * 60 + NOW_SECOND));
+        TARGET_TOTAL=$$((20 * 3600));
+        SLEEP_FOR=$$((TARGET_TOTAL - NOW_TOTAL));
+        if [ $$SLEEP_FOR -le 0 ]; then
+          SLEEP_FOR=$$((SLEEP_FOR + 86400));
+        fi;
+        echo \"[$$(date)] Next backup in $$SLEEP_FOR seconds\";
+        sleep $$SLEEP_FOR;
+        echo \"[$$(date)] Starting backup...\";
+        PGPASSWORD=$${POSTGRES_PASSWORD} pg_dump
+          -h postgres -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+          --format=custom --compress=6 --no-owner
+          > /backups/wiii_ai_$$(date +%Y%m%d_%H%M%S).dump;
+        echo \"[$$(date)] Cleaning old backups (>30 days)...\";
+        find /backups -name '*.dump' -mtime +30 -delete;
+        echo \"[$$(date)] Backup complete.\";
+      done"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wiii}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-wiii_ai}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    cpus: "${BACKUP_CPU_LIMIT:-0.25}"
+    mem_limit: "${BACKUP_MEM_LIMIT:-192M}"
+    deploy:
+      resources:
+        limits:
+          cpus: "${BACKUP_CPU_LIMIT:-0.25}"
+          memory: "${BACKUP_MEM_LIMIT:-192M}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h postgres -U $${POSTGRES_USER:-wiii} -d $${POSTGRES_DB:-wiii_ai}"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # =============================================================================
+  # NEO4J — Optional Graph Database (opt-in via --profile neo4j)
+  # Sprint 165: Neo4j disabled by default (enable_neo4j=False)
+  # Start with: docker compose -f docker-compose.prod.yml --profile neo4j up -d
+  # =============================================================================
+  neo4j:
+    image: neo4j:5-community
+    container_name: wiii-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_dbms_memory_pagecache_size: 512m
+    # No external ports exposed in production
+    # Uncomment for maintenance:
+    # ports:
+    #   - "127.0.0.1:7474:7474"
+    #   - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "2G"
+        reservations:
+          cpus: "0.25"
+          memory: "512M"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    profiles:
+      - neo4j  # Opt-in: docker compose -f docker-compose.prod.yml --profile neo4j up -d
+
+  # =============================================================================
+  # MINIO — Production Object Storage
+  # =============================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: wiii-minio
+    # No external ports — access via internal network
+    # Uncomment for maintenance console:
+    # ports:
+    #   - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-wiii}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    networks:
+      - wiii-network
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    cpus: "${MINIO_CPU_LIMIT:-0.35}"
+    mem_limit: "${MINIO_MEM_LIMIT:-384M}"
+    deploy:
+      resources:
+        limits:
+          cpus: "${MINIO_CPU_LIMIT:-0.35}"
+          memory: "${MINIO_MEM_LIMIT:-384M}"
+        reservations:
+          cpus: "0.1"
+          memory: "128M"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # MINIO INIT — Create bucket on startup
+  # =============================================================================
+  minio-init:
+    image: minio/mc:latest
+    container_name: wiii-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-wiii}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-wiii-docs}
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5 &&
+      /usr/bin/mc config host add local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY &&
+      /usr/bin/mc mb local/$$MINIO_BUCKET --ignore-existing &&
+      echo 'MinIO bucket created successfully'
+      "
+    networks:
+      - wiii-network
+    restart: "no"
+
+  # =============================================================================
+  # VALKEY — Rate Limiter + Cache Backend (production)
+  # =============================================================================
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: wiii-valkey
+    # No external ports in production
+    volumes:
+      - valkey_data:/data
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    cpus: "${VALKEY_CPU_LIMIT:-0.25}"
+    mem_limit: "${VALKEY_MEM_LIMIT:-192M}"
+    deploy:
+      resources:
+        limits:
+          cpus: "${VALKEY_CPU_LIMIT:-0.25}"
+          memory: "${VALKEY_MEM_LIMIT:-192M}"
+        reservations:
+          cpus: "0.1"
+          memory: "64M"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # SEARXNG — Self-hosted meta-search aggregator (Phase 35)
+  # Aggregates 70+ engines (Google, Bing, Brave, DDG, Qwant, Mojeek, etc.)
+  # without API keys. Replaces SerpAPI / Brave-paid for breaking-news coverage.
+  # Internal-only on `wiii-network`; backend hits `http://searxng:8080`.
+  # Pattern: AGPL-3.0 OSS, 60k+ stars, used by Open WebUI / LiteLLM / Cherry.
+  # =============================================================================
+  searxng:
+    image: searxng/searxng:latest
+    container_name: wiii-searxng
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - UWSGI_WORKERS=2
+      - UWSGI_THREADS=4
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512M"
+        reservations:
+          cpus: "0.1"
+          memory: "128M"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # OLLAMA — Local LLM for Soul AGI (opt-in via --profile soul-agi)
+  # Sprint 188: Zero-cost heartbeat/journal/briefing via explicit Qwen3 instruct tag
+  # After first deploy: docker exec wiii-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+  # =============================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: wiii-ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "4G"
+        reservations:
+          cpus: "0.5"
+          memory: "1G"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    profiles:
+      - soul-agi
+
+  # =============================================================================
+  # CLOUDFLARED — Cloudflare Tunnel for webhook ingress (opt-in via --profile soul-agi)
+  # Sprint 188: Stable webhook URL without public IP / port forwarding
+  # Requires: CF_TUNNEL_TOKEN from Cloudflare Zero Trust dashboard
+  # =============================================================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: wiii-cloudflared
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    networks:
+      - wiii-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: "128M"
+        reservations:
+          cpus: "0.05"
+          memory: "32M"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - soul-agi
+
+volumes:
+  postgres_data:
+    driver: local
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+  minio_data:
+    driver: local
+  valkey_data:
+    driver: local
+  nginx_logs:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  wiii-network:
+    driver: bridge
+    name: wiii-network

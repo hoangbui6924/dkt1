@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: qlth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: QuanLyTruongHoc
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - qlth-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: QuanLyTruongHoc.Api/Dockerfile
+    container_name: qlth-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=QuanLyTruongHoc;Username=postgres;Password=postgres"
+      Jwt__SecretKey: "CHANGE_THIS_SECRET_KEY_TO_SOMETHING_LONG_AND_RANDOM_32B"
+      Jwt__Issuer: "QuanLyTruongHoc.Api"
+      Jwt__Audience: "QuanLyTruongHoc.Client"
+    ports:
+      - "5000:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: "http://localhost:5000/api"
+    container_name: qlth-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: qlth-pgadmin
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    volumes:
+      - qlth-pgadmin:/var/lib/pgadmin
+
+volumes:
+  qlth-pgdata:
+  qlth-pgadmin:

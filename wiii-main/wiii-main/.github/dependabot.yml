@@ -1,0 +1,218 @@
+# Dependabot configuration for Wiii.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Strategy (updated 2026-04-25 for single-maintainer noise control):
+#   - Security updates are handled separately via Dependabot Security alerts
+#     and automated security fixes enabled in repository settings.
+#   - Version updates run **monthly**, grouped per ecosystem, to keep email
+#     and review volume manageable for a solo maintainer.
+#   - Patch bumps are grouped; major bumps land as separate PRs so that
+#     breaking-change risk is reviewed explicitly.
+#   - Each ecosystem caps at 2 open PRs — Dependabot will queue the rest
+#     until older ones merge.
+#   - All PRs land Monday morning Asia/Ho_Chi_Minh to batch into the work
+#     week, not over the weekend.
+
+version: 2
+
+updates:
+  # ─── Backend (FastAPI + LangChain + Gemini SDK) ─────────────────────
+  - package-ecosystem: "pip"
+    directory: "/maritime-ai-service"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    labels:
+      - "area:backend"
+      - "dependencies"
+    ignore:
+      # Backend runtime majors — each needs a manual migration window.
+      # - numpy 2.x: many downstream wheels (scipy, scikit-learn, torch)
+      #   still catching up; stay on 1.x until we validate the tree.
+      # - pgvector: follows PostgreSQL extension schema; requires coordinated
+      #   pg extension upgrade.
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pgvector"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # pypdf 4.x → 6.x has API changes affecting the ingestion pipeline.
+      # Stay on 4.x until we rerun the ingestion regression suite.
+      - dependency-name: "pypdf"
+        update-types: ["version-update:semver-major"]
+      # duckduckgo-search 7 → 8 has API rename of search_news etc.; pin
+      # until we update the wrapper (was PR #56).
+      - dependency-name: "duckduckgo-search"
+        update-types: ["version-update:semver-major"]
+    groups:
+      langchain-stack:
+        patterns:
+          - "langchain*"
+          - "langgraph*"
+      google-ai-stack:
+        patterns:
+          - "google-*"
+          - "vertexai"
+      observability:
+        patterns:
+          - "opentelemetry-*"
+          - "sentry-sdk"
+          - "structlog"
+      fastapi-stack:
+        patterns:
+          - "fastapi"
+          - "uvicorn"
+          - "gunicorn"
+          - "slowapi"
+          - "starlette"
+      dev-tools:
+        dependency-type: "development"
+
+  # ─── Desktop / Embed (React + Tauri + Vite) ─────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/wiii-desktop"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    labels:
+      - "area:frontend"
+      - "dependencies"
+    ignore:
+      # React major bumps need coordinated migration
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      # Frontend build-chain majors — each needs a manual migration pass
+      # before we can pick up. Revisit when we have a dedicated window.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@testing-library/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "jsdom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "cross-env"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Frontend runtime majors — each is a breaking-API bump. Revisit
+      # individually; Dependabot was closing PRs #40, #43 to these.
+      - dependency-name: "zustand"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "lucide-react"
+        update-types: ["version-update:semver-major"]
+      # uuid 9 → 14 is a five-major jump with ESM migration; pin until a
+      # dedicated window (was recurring PR #57, #61).
+      - dependency-name: "uuid"
+        update-types: ["version-update:semver-major"]
+      # react-markdown 9 → 10 is a plugin-API rewrite (was PR #62).
+      - dependency-name: "react-markdown"
+        update-types: ["version-update:semver-major"]
+    groups:
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
+      visualization:
+        patterns:
+          - "plotly.js*"
+          - "react-plotly.js"
+          - "mermaid*"
+          - "@mermaid-js/*"
+          - "cytoscape*"
+      code-rendering:
+        patterns:
+          - "shiki*"
+          - "@shikijs/*"
+          - "refractor"
+          - "react-shiki"
+          - "monaco-editor*"
+          - "@codesandbox/*"
+      build-tools:
+        patterns:
+          - "vite*"
+          - "@vitejs/*"
+          - "vitest*"
+          - "typescript"
+      dev-tools:
+        dependency-type: "development"
+
+  # ─── Tauri Rust side ────────────────────────────────────────────────
+  - package-ecosystem: "cargo"
+    directory: "/wiii-desktop/src-tauri"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "area:frontend"
+      - "dependencies"
+      - "rust"
+    groups:
+      tauri-core:
+        patterns:
+          - "tauri*"
+
+  # ─── GitHub Actions workflows ───────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    labels:
+      - "area:ci"
+      - "dependencies"
+
+  # ─── Dockerfile base images ─────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/maritime-ai-service"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "area:backend"
+      - "dependencies"
+      - "docker"
+    ignore:
+      # Python base-image major bumps require a full requirements retest
+      # (wheels availability, langchain/pydantic/pgvector compat, etc.).
+      # Pin at 3.11-slim until we have a dedicated window.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

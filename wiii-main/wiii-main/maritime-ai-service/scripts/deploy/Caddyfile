@@ -1,0 +1,122 @@
+# =============================================================================
+# Wiii Production — Caddy Reverse Proxy (behind Cloudflare)
+# by The Wiii Lab (Hong Linh Linh Hung)
+#
+# Architecture: Cloudflare (SSL) → Caddy (reverse proxy :80) → Nginx (:8080)
+#
+# Install:
+#   sudo cp Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Cloudflare proxy (orange cloud) handles:
+#   - SSL/TLS termination (Full mode — Cloudflare trusts Caddy's self-signed)
+#   - HTTP/3 (QUIC)
+#   - DDoS protection
+#   - CDN caching
+#
+# Caddy handles:
+#   - HTTP reverse proxy to Nginx
+#   - Auto TLS for direct access (self-signed if ACME fails behind CF)
+#   - Request routing + headers
+#
+# This server ONLY serves wiii.holilihu.online
+# holilihu.online points to a different server (LMS)
+# =============================================================================
+
+{
+    # ACME email for cert notifications
+    email admin@holilihu.online
+}
+
+# ─────────────────────────────────────────────────
+# Wiii Web App — wiii.holilihu.online
+# Full SPA + API reverse proxy
+#
+# Cloudflare terminates TLS → forwards HTTP to port 80
+# Caddy will attempt Let's Encrypt but falls back to
+# self-signed if ACME challenges are intercepted by CF.
+# Either way, Cloudflare "Full" SSL mode works.
+# ─────────────────────────────────────────────────
+wiii.holilihu.online {
+    # Cloudflare should use SSL/TLS mode "Full" for this origin. Caddy uses
+    # an internal origin cert so rebuilds do not depend on public ACME while
+    # the DNS record is proxied through Cloudflare.
+    tls internal
+
+    reverse_proxy localhost:8080 {
+        # Flush immediately for SSE streaming (critical!)
+        flush_interval -1
+
+        # Health checking upstream Nginx
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+
+        # Timeouts for LLM streaming responses
+        transport http {
+            response_header_timeout 120s
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        -Server
+    }
+
+    # Request size limit (for PDF uploads)
+    request_body {
+        max_size 50MB
+    }
+
+    # Access logging (JSON format)
+    log {
+        output file /var/log/caddy/wiii-access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 168h
+        }
+        format json
+    }
+}
+
+# ─────────────────────────────────────────────────
+# Wildcard subdomains — *.holilihu.online
+# For future multi-tenant org routing
+# Requires: Caddy with caddy-dns/cloudflare plugin for wildcard certs
+# ─────────────────────────────────────────────────
+
+# Uncomment when you need subdomain routing:
+# *.holilihu.online {
+#     tls {
+#         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+#     }
+#
+#     reverse_proxy localhost:8080 {
+#         flush_interval -1
+#         transport http {
+#             response_header_timeout 120s
+#             read_timeout 300s
+#             write_timeout 300s
+#         }
+#     }
+#
+#     header {
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+#         -Server
+#     }
+#
+#     request_body {
+#         max_size 50MB
+#     }
+#
+#     log {
+#         output file /var/log/caddy/holilihu-wildcard.log {
+#             roll_size 100mb
+#             roll_keep 5
+#         }
+#         format json
+#     }
+# }

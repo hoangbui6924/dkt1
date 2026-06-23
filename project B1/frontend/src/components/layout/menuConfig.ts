@@ -1,0 +1,107 @@
+import type { LucideIcon } from 'lucide-react';
+import {
+  LayoutDashboard,
+  FolderKanban,
+  Users,
+  CalendarRange,
+  BarChart3,
+  ScrollText,
+  Settings,
+  BookOpen,
+  ClipboardList,
+  Award,
+} from 'lucide-react';
+
+export interface MenuChild {
+  label: string;
+  path: string;
+}
+
+export interface MenuItem {
+  label: string;
+  icon: LucideIcon;
+  path?: string;
+  children?: MenuChild[];
+}
+
+export const adminMenu: MenuItem[] = [
+  {
+    label: 'Tổng quan',
+    icon: LayoutDashboard,
+    path: '/admin',
+  },
+  {
+    label: 'Quản lý danh mục',
+    icon: FolderKanban,
+    children: [
+      { label: 'Khoa viện', path: '/admin/danh-muc/khoa-vien' },
+      { label: 'Ngành học', path: '/admin/danh-muc/nganh-hoc' },
+      { label: 'Bộ môn', path: '/admin/danh-muc/bo-mon' },
+      { label: 'Môn học', path: '/admin/danh-muc/mon-hoc' },
+      { label: 'Khung chương trình', path: '/admin/danh-muc/khung-chuong-trinh' },
+    ],
+  },
+  {
+    label: 'Quản lý người dùng',
+    icon: Users,
+    children: [
+      { label: 'Sinh viên', path: '/admin/nguoi-dung/sinh-vien' },
+      { label: 'Giảng viên', path: '/admin/nguoi-dung/giang-vien' },
+      { label: 'Tài khoản & quyền', path: '/admin/nguoi-dung/tai-khoan' },
+    ],
+  },
+  {
+    label: 'Quản lý học vụ',
+    icon: CalendarRange,
+    children: [
+      { label: 'Năm học & học kỳ', path: '/admin/hoc-vu/nam-hoc' },
+      { label: 'Khoá học ngành', path: '/admin/hoc-vu/khoa-hoc-nganh' },
+      { label: 'Lớp học theo kỳ', path: '/admin/hoc-vu/lop-hoc-ky' },
+      { label: 'Đăng ký học phần', path: '/admin/hoc-vu/dang-ky' },
+      { label: 'Nhập điểm', path: '/admin/hoc-vu/diem' },
+    ],
+  },
+  {
+    label: 'Thống kê & báo cáo',
+    icon: BarChart3,
+    path: '/admin/thong-ke',
+  },
+  {
+    label: 'Nhật ký hệ thống',
+    icon: ScrollText,
+    path: '/admin/audit-log',
+  },
+  {
+    label: 'Cài đặt',
+    icon: Settings,
+    path: '/admin/cai-dat',
+  },
+];
+
+export const studentMenu: MenuItem[] = [
+  {
+    label: 'Tổng quan',
+    icon: LayoutDashboard,
+    path: '/student',
+  },
+  {
+    label: 'Khung chương trình',
+    icon: BookOpen,
+    path: '/student/khung-chuong-trinh',
+  },
+  {
+    label: 'Đăng ký học phần',
+    icon: ClipboardList,
+    path: '/student/dang-ky',
+  },
+  {
+    label: 'Kết quả học tập',
+    icon: Award,
+    path: '/student/ket-qua-hoc-tap',
+  },
+  {
+    label: 'Cài đặt',
+    icon: Settings,
+    path: '/student/cai-dat',
+  },
+];

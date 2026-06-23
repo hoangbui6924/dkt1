@@ -1,0 +1,132 @@
+# ============================================
+# Wiii Project — Root .gitignore
+# ============================================
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.installed.cfg
+
+# === Virtual Environment ===
+.venv/
+venv/
+ENV/
+
+# === Environment / Secrets ===
+.env
+.env.local
+.env.render
+.env.production
+*.local
+
+# === Testing ===
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+.ruff_cache/
+artifacts/
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+nul
+
+# === Logs ===
+*.log
+logs/
+
+# === Database ===
+*.db
+*.sqlite3
+
+# === Node.js (wiii-desktop) ===
+node_modules/
+
+# === Tauri build artifacts ===
+wiii-desktop/src-tauri/target/
+
+# === Build outputs ===
+build/
+dist/
+downloads/
+wheels/
+sdist/
+develop-eggs/
+eggs/
+.eggs/
+parts/
+var/
+
+# === Temp / generated ===
+_find_untested.py
+docx_output.txt
+test_*.txt
+/tools/*
+!/tools/wiii_self_harness/
+!/tools/wiii_self_harness/**
+tools/wiii_self_harness/__pycache__/
+!/tools/wiii_understand_harness/
+!/tools/wiii_understand_harness/**
+tools/wiii_understand_harness/__pycache__/
+
+# === pip install artifacts ===
+maritime-ai-service/=*
+
+# === Local dev session files ===
+2026-03-*.md
+ollama-benchmark-*.json
+wiii-1420.err
+wiii-1420.out
+test-results/
+Documents/
+maritime-ai-service/.tmp-workspace/
+maritime-ai-service/.env.soul-agi
+maritime-ai-service/.env.production.bak-*
+wiii-desktop/playwright/*.png
+wiii-desktop/public/labs/
+wiii-desktop/scripts/screenshots/
+
+# === Local agent scratch artifacts ===
+.claude/
+**/.claude/
+.Codex/
+**/.Codex/
+.understand-anything/
+**/.understand-anything/
+/plans/
+
+# === Large data files ===
+maritime-ai-service/data/*.pdf
+maritime-ai-service/data/*.csv
+
+# === Documentation screenshots ===
+docs/assets/screenshots/tmp/
+
+# === Generated build output ===
+wiii-desktop/dist-embed/
+wiii-desktop/dist-web/
+wiii-desktop/dist-pointy/
+pytest-cache-files-*
+# Keep local nested agent configs ignored, but track approved Codex review and
+# subsystem guidance files.
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/speckit-*/
+!.agents/skills/speckit-*/SKILL.md
+**/AGENTS.md
+!/AGENTS.md
+!/maritime-ai-service/AGENTS.md
+!/wiii-desktop/AGENTS.md
