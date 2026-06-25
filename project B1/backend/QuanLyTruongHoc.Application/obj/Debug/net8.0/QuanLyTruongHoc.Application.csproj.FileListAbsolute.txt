@@ -28,3 +28,4 @@ E:\Project B\project B1\backend\QuanLyTruongHoc.Application\obj\Debug\net8.0\Qua
 E:\Project B\project B1\backend\QuanLyTruongHoc.Application\obj\Debug\net8.0\refint\QuanLyTruongHoc.Application.dll
 E:\Project B\project B1\backend\QuanLyTruongHoc.Application\obj\Debug\net8.0\QuanLyTruongHoc.Application.pdb
 E:\Project B\project B1\backend\QuanLyTruongHoc.Application\obj\Debug\net8.0\ref\QuanLyTruongHoc.Application.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Application\obj\Debug\net8.0\QuanLyTruongHoc.Application.sourcelink.json

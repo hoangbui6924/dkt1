@@ -137,7 +137,7 @@ export default function StudentKhungChuongTrinhPage() {
                 }}
               />
             </div>
-            <p style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text-muted)' }}>
+            <p style={{ marginTop: 6, fontSize: 14, color: 'var(--text-muted)' }}>
               Tiến độ tích lũy tín chỉ: {tienDoTinChi}%
             </p>
           </div>
@@ -167,8 +167,8 @@ export default function StudentKhungChuongTrinhPage() {
                       borderBottom: '1px solid var(--border)',
                     }}
                   >
-                    <strong style={{ fontSize: 13.5, color: 'var(--text-h)' }}>Học kỳ {ky}</strong>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tongTC} TC</span>
+                    <strong style={{ fontSize: 15, color: 'var(--text-h)' }}>Học kỳ {ky}</strong>
+                    <span style={{ fontSize: 13.5, color: 'var(--text-muted)' }}>{tongTC} TC</span>
                   </div>
                   <div>
                     {mons.map((m, idx) => (
@@ -179,15 +179,15 @@ export default function StudentKhungChuongTrinhPage() {
                           borderBottom: idx === mons.length - 1 ? 'none' : '1px solid var(--border)',
                         }}
                       >
-                        <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--text-h)' }}>
+                        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-h)' }}>
                           {m.tenMonHoc}
                         </p>
-                        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 7 }}>
                           <span
                             style={{
-                              fontSize: 10,
+                              fontSize: 11.5,
                               fontWeight: 700,
-                              padding: '2px 6px',
+                              padding: '2px 7px',
                               borderRadius: 999,
                               background: m.loaiMonHoc === 'Bắt buộc' ? 'var(--primary-soft)' : 'var(--warning-soft)',
                               color: m.loaiMonHoc === 'Bắt buộc' ? 'var(--primary)' : 'var(--warning)',
@@ -195,10 +195,10 @@ export default function StudentKhungChuongTrinhPage() {
                           >
                             {m.loaiMonHoc}
                           </span>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{m.soTinChi} TC</span>
+                          <span style={{ fontSize: 13.5, color: 'var(--text-muted)' }}>{m.soTinChi} TC</span>
                         </div>
                         {m.tenMonHocTienQuyet && (
-                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
                             Tiên quyết: {m.tenMonHocTienQuyet}
                           </p>
                         )}

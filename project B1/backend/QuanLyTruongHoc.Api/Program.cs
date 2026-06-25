@@ -8,6 +8,10 @@ using QuanLyTruongHoc.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Cho phép tải file PDF tài liệu tới 50MB
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 50 * 1024 * 1024);
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = 50 * 1024 * 1024);
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -17,6 +21,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+builder.Services.Configure<NvidiaAiSettings>(builder.Configuration.GetSection("NvidiaAi"));
+builder.Services.AddHttpClient<IAiChatService, NvidiaAiChatService>();
+builder.Services.AddHttpClient<IEmbeddingService, NvidiaEmbeddingService>();
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? new JwtSettings();
 

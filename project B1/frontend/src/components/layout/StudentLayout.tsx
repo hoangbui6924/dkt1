@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { studentMenu } from './menuConfig';
+import ChatbotWidget from '../ChatbotWidget';
 import './AdminLayout.css';
 
 function resolveTitle(pathname: string): string {
@@ -28,6 +29,7 @@ export default function StudentLayout() {
           <Outlet />
         </div>
       </div>
+      <ChatbotWidget />
     </div>
   );
 }

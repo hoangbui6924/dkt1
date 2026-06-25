@@ -524,6 +524,38 @@
           }
         }
       },
+      "PdfPig/0.1.9": {
+        "runtime": {
+          "lib/net8.0/UglyToad.PdfPig.Core.dll": {
+            "assemblyVersion": "0.1.9.0",
+            "fileVersion": "0.1.9.0"
+          },
+          "lib/net8.0/UglyToad.PdfPig.DocumentLayoutAnalysis.dll": {
+            "assemblyVersion": "0.1.9.0",
+            "fileVersion": "0.1.9.0"
+          },
+          "lib/net8.0/UglyToad.PdfPig.Fonts.dll": {
+            "assemblyVersion": "0.1.9.0",
+            "fileVersion": "0.1.9.0"
+          },
+          "lib/net8.0/UglyToad.PdfPig.Package.dll": {
+            "assemblyVersion": "0.1.8.0",
+            "fileVersion": "0.1.8.0"
+          },
+          "lib/net8.0/UglyToad.PdfPig.Tokenization.dll": {
+            "assemblyVersion": "0.1.9.0",
+            "fileVersion": "0.1.9.0"
+          },
+          "lib/net8.0/UglyToad.PdfPig.Tokens.dll": {
+            "assemblyVersion": "0.1.9.0",
+            "fileVersion": "0.1.9.0"
+          },
+          "lib/net8.0/UglyToad.PdfPig.dll": {
+            "assemblyVersion": "0.1.9.0",
+            "fileVersion": "0.1.9.0"
+          }
+        }
+      },
       "Swashbuckle.AspNetCore/6.6.2": {
         "dependencies": {
           "Microsoft.Extensions.ApiDescription.Server": "6.0.5",
@@ -686,6 +718,7 @@
           "Microsoft.EntityFrameworkCore": "8.0.10",
           "Microsoft.Extensions.Options": "8.0.2",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "8.0.10",
+          "PdfPig": "0.1.9",
           "QuanLyTruongHoc.Application": "1.0.0",
           "QuanLyTruongHoc.Domain": "1.0.0",
           "System.IdentityModel.Tokens.Jwt": "7.1.2"
@@ -949,6 +982,13 @@
       "sha512": "sha512-gFPl9Dmxih7Yi4tZ3bITzZFzbxFMBx04gqTqcjoL2r5VEW+O2TA5UVw/wm/XW26NAJ7sg59Je0+9QrwiZt6MPQ==",
       "path": "npgsql.entityframeworkcore.postgresql/8.0.10",
       "hashPath": "npgsql.entityframeworkcore.postgresql.8.0.10.nupkg.sha512"
+    },
+    "PdfPig/0.1.9": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-VU27oq5O0rpD+zWiD639xXkSHtsNXqbPpYV0pzYg9VPhDibH1cq1i67f9DuW2WnzDVEti0HipLcZxDhdayIzGg==",
+      "path": "pdfpig/0.1.9",
+      "hashPath": "pdfpig.0.1.9.nupkg.sha512"
     },
     "Swashbuckle.AspNetCore/6.6.2": {
       "type": "package",

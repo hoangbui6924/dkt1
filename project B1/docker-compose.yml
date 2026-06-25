@@ -31,6 +31,9 @@ services:
       Jwt__SecretKey: "CHANGE_THIS_SECRET_KEY_TO_SOMETHING_LONG_AND_RANDOM_32B"
       Jwt__Issuer: "QuanLyTruongHoc.Api"
       Jwt__Audience: "QuanLyTruongHoc.Client"
+      NvidiaAi__BaseUrl: "https://integrate.api.nvidia.com/v1"
+      NvidiaAi__ApiKey: "${NVIDIA_API_KEY:-}"
+      NvidiaAi__Model: "openai/gpt-oss-120b"
     ports:
       - "5000:8080"
 

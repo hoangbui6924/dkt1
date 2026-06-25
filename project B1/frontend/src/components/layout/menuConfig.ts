@@ -10,6 +10,7 @@ import {
   BookOpen,
   ClipboardList,
   Award,
+  FileText,
 } from 'lucide-react';
 
 export interface MenuChild {
@@ -62,6 +63,11 @@ export const adminMenu: MenuItem[] = [
     ],
   },
   {
+    label: 'Quản lý tài liệu',
+    icon: FileText,
+    path: '/admin/tai-lieu',
+  },
+  {
     label: 'Thống kê & báo cáo',
     icon: BarChart3,
     path: '/admin/thong-ke',
@@ -98,6 +104,11 @@ export const studentMenu: MenuItem[] = [
     label: 'Kết quả học tập',
     icon: Award,
     path: '/student/ket-qua-hoc-tap',
+  },
+  {
+    label: 'Tài liệu môn học',
+    icon: FileText,
+    path: '/student/tai-lieu',
   },
   {
     label: 'Cài đặt',

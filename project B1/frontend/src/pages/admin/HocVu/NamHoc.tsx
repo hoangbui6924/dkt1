@@ -19,7 +19,16 @@ import {
 import Modal from '../../../components/Modal';
 
 const EMPTY_NAM_HOC: NamHocInput = { tenNamHoc: '', ngayBatDau: '', ngayKetThuc: '' };
-const EMPTY_HOC_KY: HocKyInput = { tenHocKy: '', ngayBatDau: '', ngayKetThuc: '' };
+const EMPTY_HOC_KY: HocKyInput = {
+  tenHocKy: '',
+  loaiHocKy: 'Chính',
+  ngayBatDau: '',
+  ngayKetThuc: '',
+  hanDangKyTu: null,
+  hanDangKyDen: null,
+  hanRutDangKyTu: null,
+  hanRutDangKyDen: null,
+};
 
 export default function NamHocPage() {
   const [namHocs, setNamHocs] = useState<NamHocModel[]>([]);
@@ -136,7 +145,17 @@ export default function NamHocPage() {
 
   function openEditHocKy(item: HocKyModel) {
     setEditingHocKy(item);
-    setHocKyForm({ tenHocKy: item.tenHocKy, ngayBatDau: item.ngayBatDau, ngayKetThuc: item.ngayKetThuc });
+    const toLocalInput = (v: string | null) => (v ? v.slice(0, 16) : '');
+    setHocKyForm({
+      tenHocKy: item.tenHocKy,
+      loaiHocKy: item.loaiHocKy || 'Chính',
+      ngayBatDau: item.ngayBatDau,
+      ngayKetThuc: item.ngayKetThuc,
+      hanDangKyTu: toLocalInput(item.hanDangKyTu) || null,
+      hanDangKyDen: toLocalInput(item.hanDangKyDen) || null,
+      hanRutDangKyTu: toLocalInput(item.hanRutDangKyTu) || null,
+      hanRutDangKyDen: toLocalInput(item.hanRutDangKyDen) || null,
+    });
     setHocKyFormError('');
     setHocKyModalOpen(true);
   }
@@ -293,14 +312,20 @@ export default function NamHocPage() {
                   <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                     Tên học kỳ
                   </th>
-                  <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Ngày bắt đầu
-                  </th>
-                  <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Ngày kết thúc
+                  <th className="w-24 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                    Loại
                   </th>
                   <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Số lớp học
+                    Bắt đầu
+                  </th>
+                  <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                    Kết thúc
+                  </th>
+                  <th className="w-52 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                    Hạn đăng ký
+                  </th>
+                  <th className="w-24 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                    Số lớp
                   </th>
                   <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                     Hành động
@@ -310,7 +335,7 @@ export default function NamHocPage() {
               <tbody className="divide-y divide-gray-100">
                 {hocKysCuaNam.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
                       <Layers className="mx-auto mb-2 h-10 w-10 opacity-40" />
                       <p>Chưa có học kỳ nào</p>
                     </td>
@@ -324,9 +349,27 @@ export default function NamHocPage() {
                     <td className="border-r border-gray-200 px-3 py-2 text-sm font-medium text-gray-900">
                       {h.tenHocKy}
                     </td>
-                    <td className="w-36 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">{h.ngayBatDau}</td>
-                    <td className="w-36 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">{h.ngayKetThuc}</td>
-                    <td className="w-32 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">{h.soLopHoc}</td>
+                    <td className="w-24 border-r border-gray-200 px-3 py-2 text-sm">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          h.loaiHocKy === 'Phụ' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {h.loaiHocKy}
+                      </span>
+                    </td>
+                    <td className="w-32 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">{h.ngayBatDau}</td>
+                    <td className="w-32 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">{h.ngayKetThuc}</td>
+                    <td className="w-52 border-r border-gray-200 px-3 py-2 text-xs text-gray-600">
+                      {h.hanDangKyTu && h.hanDangKyDen ? (
+                        <span>
+                          {h.hanDangKyTu.slice(0, 16).replace('T', ' ')} → {h.hanDangKyDen.slice(0, 16).replace('T', ' ')}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Chưa đặt</span>
+                      )}
+                    </td>
+                    <td className="w-24 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">{h.soLopHoc}</td>
                     <td className="w-28 px-3 py-2">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
@@ -415,41 +458,112 @@ export default function NamHocPage() {
       )}
 
       {hocKyModalOpen && (
-        <Modal title={editingHocKy ? 'Sửa học kỳ' : 'Thêm học kỳ'} onClose={() => setHocKyModalOpen(false)}>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="tenHocKy">
-            Tên học kỳ
-          </label>
-          <input
-            id="tenHocKy"
-            type="text"
-            value={hocKyForm.tenHocKy}
-            onChange={(e) => setHocKyForm((f) => ({ ...f, tenHocKy: e.target.value }))}
-            placeholder="VD: Học kỳ 1"
-            autoFocus
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
+        <Modal
+          title={editingHocKy ? 'Sửa học kỳ' : 'Thêm học kỳ'}
+          onClose={() => setHocKyModalOpen(false)}
+          maxWidthClassName="max-w-[520px]"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="tenHocKy">
+                Tên học kỳ
+              </label>
+              <input
+                id="tenHocKy"
+                type="text"
+                value={hocKyForm.tenHocKy}
+                onChange={(e) => setHocKyForm((f) => ({ ...f, tenHocKy: e.target.value }))}
+                placeholder="VD: Học kỳ 1"
+                autoFocus
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="loaiHocKy">
+                Loại học kỳ
+              </label>
+              <select
+                id="loaiHocKy"
+                value={hocKyForm.loaiHocKy}
+                onChange={(e) => setHocKyForm((f) => ({ ...f, loaiHocKy: e.target.value }))}
+                className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="Chính">Chính (15 tuần)</option>
+                <option value="Phụ">Phụ (6 tuần)</option>
+              </select>
+            </div>
+          </div>
 
-          <label className="mb-1.5 mt-4 block text-sm font-medium text-gray-700" htmlFor="ngayBatDauHocKy">
-            Ngày bắt đầu
-          </label>
-          <input
-            id="ngayBatDauHocKy"
-            type="date"
-            value={hocKyForm.ngayBatDau}
-            onChange={(e) => setHocKyForm((f) => ({ ...f, ngayBatDau: e.target.value }))}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ngayBatDauHocKy">
+                Ngày bắt đầu
+              </label>
+              <input
+                id="ngayBatDauHocKy"
+                type="date"
+                value={hocKyForm.ngayBatDau}
+                onChange={(e) => setHocKyForm((f) => ({ ...f, ngayBatDau: e.target.value }))}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ngayKetThucHocKy">
+                Ngày kết thúc
+              </label>
+              <input
+                id="ngayKetThucHocKy"
+                type="date"
+                value={hocKyForm.ngayKetThuc}
+                onChange={(e) => setHocKyForm((f) => ({ ...f, ngayKetThuc: e.target.value }))}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+          </div>
 
-          <label className="mb-1.5 mt-4 block text-sm font-medium text-gray-700" htmlFor="ngayKetThucHocKy">
-            Ngày kết thúc
-          </label>
-          <input
-            id="ngayKetThucHocKy"
-            type="date"
-            value={hocKyForm.ngayKetThuc}
-            onChange={(e) => setHocKyForm((f) => ({ ...f, ngayKetThuc: e.target.value }))}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
+          <div className="mt-4 rounded-md border border-gray-200 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Hạn đăng ký học phần (không bắt buộc)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Mở đăng ký từ</label>
+                <input
+                  type="datetime-local"
+                  value={hocKyForm.hanDangKyTu ?? ''}
+                  onChange={(e) => setHocKyForm((f) => ({ ...f, hanDangKyTu: e.target.value || null }))}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Đóng đăng ký lúc</label>
+                <input
+                  type="datetime-local"
+                  value={hocKyForm.hanDangKyDen ?? ''}
+                  onChange={(e) => setHocKyForm((f) => ({ ...f, hanDangKyDen: e.target.value || null }))}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Mở rút đăng ký từ</label>
+                <input
+                  type="datetime-local"
+                  value={hocKyForm.hanRutDangKyTu ?? ''}
+                  onChange={(e) => setHocKyForm((f) => ({ ...f, hanRutDangKyTu: e.target.value || null }))}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Đóng rút đăng ký lúc</label>
+                <input
+                  type="datetime-local"
+                  value={hocKyForm.hanRutDangKyDen ?? ''}
+                  onChange={(e) => setHocKyForm((f) => ({ ...f, hanRutDangKyDen: e.target.value || null }))}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
 
           {hocKyFormError && <div className="mt-1.5 text-sm text-red-600">{hocKyFormError}</div>}
 

@@ -36,3 +36,4 @@ E:\Project B\project B1\backend\QuanLyTruongHoc.Infrastructure\obj\Debug\net8.0\
 E:\Project B\project B1\backend\QuanLyTruongHoc.Infrastructure\obj\Debug\net8.0\QuanLyTruongHoc.Infrastructure.pdb
 E:\Project B\project B1\backend\QuanLyTruongHoc.Infrastructure\obj\Debug\net8.0\QuanLyTruongHoc.Infrastructure.genruntimeconfig.cache
 E:\Project B\project B1\backend\QuanLyTruongHoc.Infrastructure\obj\Debug\net8.0\ref\QuanLyTruongHoc.Infrastructure.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Infrastructure\obj\Debug\net8.0\QuanLyTruongHoc.Infrastructure.sourcelink.json

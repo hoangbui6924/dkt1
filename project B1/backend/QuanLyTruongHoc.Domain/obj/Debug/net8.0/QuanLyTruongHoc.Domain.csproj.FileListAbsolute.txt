@@ -20,3 +20,4 @@ E:\Project B\project B1\backend\QuanLyTruongHoc.Domain\obj\Debug\net8.0\QuanLyTr
 E:\Project B\project B1\backend\QuanLyTruongHoc.Domain\obj\Debug\net8.0\refint\QuanLyTruongHoc.Domain.dll
 E:\Project B\project B1\backend\QuanLyTruongHoc.Domain\obj\Debug\net8.0\QuanLyTruongHoc.Domain.pdb
 E:\Project B\project B1\backend\QuanLyTruongHoc.Domain\obj\Debug\net8.0\ref\QuanLyTruongHoc.Domain.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Domain\obj\Debug\net8.0\QuanLyTruongHoc.Domain.sourcelink.json

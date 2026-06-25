@@ -7,6 +7,8 @@ public class LichHocLopHocKy
     public int Thu { get; set; }
     public int TietBatDau { get; set; }
     public int TietKetThuc { get; set; }
+    public DateOnly NgayBatDau { get; set; }
+    public DateOnly NgayKetThuc { get; set; }
     public string? PhongHoc { get; set; }
 
     public LopHocTrongKy? LopHocTrongKy { get; set; }

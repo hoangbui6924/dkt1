@@ -198,6 +198,10 @@
               "target": "Package",
               "version": "[8.0.10, )"
             },
+            "PdfPig": {
+              "target": "Package",
+              "version": "[0.1.9, )"
+            },
             "System.IdentityModel.Tokens.Jwt": {
               "target": "Package",
               "version": "[7.1.2, )"

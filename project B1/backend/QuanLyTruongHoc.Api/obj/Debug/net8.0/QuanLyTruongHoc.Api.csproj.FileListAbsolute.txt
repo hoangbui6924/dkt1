@@ -234,6 +234,7 @@ E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\QuanLyTruon
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\QuanLyTruongHoc.Api.csproj.CoreCompileInputs.cache
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\QuanLyTruongHoc.Api.MvcApplicationPartsAssemblyInfo.cs
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\QuanLyTruongHoc.Api.MvcApplicationPartsAssemblyInfo.cache
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\QuanLyTruongHoc.Api.sourcelink.json
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\staticwebassets.build.json
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\staticwebassets.development.json
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\staticwebassets\msbuild.QuanLyTruongHoc.Api.Microsoft.AspNetCore.StaticWebAssets.props
@@ -248,3 +249,10 @@ E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\refint\Quan
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\QuanLyTruongHoc.Api.pdb
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\QuanLyTruongHoc.Api.genruntimeconfig.cache
 E:\Project B\project B1\backend\QuanLyTruongHoc.Api\obj\Debug\net8.0\ref\QuanLyTruongHoc.Api.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\bin\Debug\net8.0\UglyToad.PdfPig.Core.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\bin\Debug\net8.0\UglyToad.PdfPig.DocumentLayoutAnalysis.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\bin\Debug\net8.0\UglyToad.PdfPig.Fonts.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\bin\Debug\net8.0\UglyToad.PdfPig.Package.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\bin\Debug\net8.0\UglyToad.PdfPig.Tokenization.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\bin\Debug\net8.0\UglyToad.PdfPig.Tokens.dll
+E:\Project B\project B1\backend\QuanLyTruongHoc.Api\bin\Debug\net8.0\UglyToad.PdfPig.dll

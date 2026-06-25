@@ -37,9 +37,20 @@ public class LopHocTrongKyController : ControllerBase
             l.HocKy?.TenHocKy ?? "",
             giangVien?.MaGiangVien,
             giangVien?.HoTen,
-            l.LichHocs?.OrderBy(x => x.Thu).ThenBy(x => x.TietBatDau)
-                .Select(x => new LichHocDto(x.MaLich, x.Thu, x.TietBatDau, x.TietKetThuc, x.PhongHoc)).ToList()
+            l.LichHocs?.OrderBy(x => x.NgayBatDau).ThenBy(x => x.Thu).ThenBy(x => x.TietBatDau)
+                .Select(x => new LichHocDto(x.MaLich, x.Thu, x.TietBatDau, x.TietKetThuc, x.NgayBatDau, x.NgayKetThuc, x.PhongHoc)).ToList()
                 ?? new List<LichHocDto>());
+    }
+
+    // Hai buổi học trùng nhau khi: cùng thứ trong tuần, dải tiết giao nhau VÀ khoảng ngày giao nhau.
+    public static bool BuoiTrungNhau(
+        int thuA, int tietBdA, int tietKtA, DateOnly ngayBdA, DateOnly ngayKtA,
+        int thuB, int tietBdB, int tietKtB, DateOnly ngayBdB, DateOnly ngayKtB)
+    {
+        if (thuA != thuB) return false;
+        var trungTiet = tietBdA <= tietKtB && tietBdB <= tietKtA;
+        var trungNgay = ngayBdA <= ngayKtB && ngayBdB <= ngayKtA;
+        return trungTiet && trungNgay;
     }
 
     private static IQueryable<Domain.Entities.LopHocTrongKy> IncludeAll(IQueryable<Domain.Entities.LopHocTrongKy> q) =>
@@ -85,15 +96,17 @@ public class LopHocTrongKyController : ControllerBase
             var cungBuoiChieu = l.TietBatDau >= 6 && l.TietKetThuc >= 6;
             if (!cungBuoiSang && !cungBuoiChieu)
                 return "Một buổi học không được kéo dài qua cả buổi sáng (tiết 1-5) và buổi chiều (tiết 6-10)";
+            if (l.NgayKetThuc < l.NgayBatDau)
+                return "Ngày kết thúc của buổi học phải sau hoặc bằng ngày bắt đầu";
         }
 
         for (var i = 0; i < lichHocs.Count; i++)
         {
             for (var j = i + 1; j < lichHocs.Count; j++)
             {
-                if (lichHocs[i].Thu == lichHocs[j].Thu &&
-                    lichHocs[i].TietBatDau <= lichHocs[j].TietKetThuc &&
-                    lichHocs[j].TietBatDau <= lichHocs[i].TietKetThuc)
+                if (BuoiTrungNhau(
+                    lichHocs[i].Thu, lichHocs[i].TietBatDau, lichHocs[i].TietKetThuc, lichHocs[i].NgayBatDau, lichHocs[i].NgayKetThuc,
+                    lichHocs[j].Thu, lichHocs[j].TietBatDau, lichHocs[j].TietKetThuc, lichHocs[j].NgayBatDau, lichHocs[j].NgayKetThuc))
                     return "Các buổi học của lớp này đang trùng giờ với nhau";
             }
         }
@@ -114,8 +127,36 @@ public class LopHocTrongKyController : ControllerBase
         {
             foreach (var khac in lichKhac)
             {
-                if (lich.Thu == khac.Thu && lich.TietBatDau <= khac.TietKetThuc && khac.TietBatDau <= lich.TietKetThuc)
+                if (BuoiTrungNhau(
+                    lich.Thu, lich.TietBatDau, lich.TietKetThuc, lich.NgayBatDau, lich.NgayKetThuc,
+                    khac.Thu, khac.TietBatDau, khac.TietKetThuc, khac.NgayBatDau, khac.NgayKetThuc))
                     return "Giảng viên này đã có lớp học khác trùng giờ trong học kỳ này";
+            }
+        }
+
+        return null;
+    }
+
+    // Phòng học không được dùng trùng giờ bởi lớp khác (môn/giảng viên bất kỳ) trong cùng học kỳ.
+    private async Task<string?> ValidatePhongHocKhongTrung(int maHocKy, List<LichHocInput> lichHocs, int? maLopHocKyHienTai)
+    {
+        var canKiemTra = lichHocs.Where(l => !string.IsNullOrWhiteSpace(l.PhongHoc)).ToList();
+        if (canKiemTra.Count == 0) return null;
+
+        var lichKhac = await _db.LichHocLopHocKys
+            .Where(x => x.LopHocTrongKy!.MaHocKy == maHocKy && x.MaLopHocKy != maLopHocKyHienTai && !string.IsNullOrWhiteSpace(x.PhongHoc))
+            .Include(x => x.LopHocTrongKy).ThenInclude(l => l!.MonHoc)
+            .ToListAsync();
+
+        foreach (var lich in canKiemTra)
+        {
+            foreach (var khac in lichKhac)
+            {
+                if (string.Equals(lich.PhongHoc!.Trim(), khac.PhongHoc!.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                    BuoiTrungNhau(
+                        lich.Thu, lich.TietBatDau, lich.TietKetThuc, lich.NgayBatDau, lich.NgayKetThuc,
+                        khac.Thu, khac.TietBatDau, khac.TietKetThuc, khac.NgayBatDau, khac.NgayKetThuc))
+                    return $"Phòng học \"{lich.PhongHoc}\" đã được lớp \"{khac.LopHocTrongKy!.MonHoc!.TenMonHoc} ({khac.LopHocTrongKy.TenLop})\" sử dụng trùng giờ trong học kỳ này, vui lòng đổi phòng học khác";
             }
         }
 
@@ -147,6 +188,10 @@ public class LopHocTrongKyController : ControllerBase
         if (lichError != null)
             return BadRequest(new { message = lichError });
 
+        var phongError = await ValidatePhongHocKhongTrung(request.MaHocKy, request.LichHocs, null);
+        if (phongError != null)
+            return Conflict(new { message = phongError });
+
         var exists = await _db.LopHocTrongKys.AnyAsync(l =>
             l.TenLop == ten && l.MaMonHoc == request.MaMonHoc && l.MaHocKy == request.MaHocKy);
         if (exists)
@@ -175,6 +220,8 @@ public class LopHocTrongKyController : ControllerBase
                 Thu = l.Thu,
                 TietBatDau = l.TietBatDau,
                 TietKetThuc = l.TietKetThuc,
+                NgayBatDau = l.NgayBatDau,
+                NgayKetThuc = l.NgayKetThuc,
                 PhongHoc = l.PhongHoc?.Trim(),
             }).ToList(),
         };
@@ -219,6 +266,10 @@ public class LopHocTrongKyController : ControllerBase
         if (lichError != null)
             return BadRequest(new { message = lichError });
 
+        var phongError = await ValidatePhongHocKhongTrung(entity.MaHocKy, request.LichHocs, id);
+        if (phongError != null)
+            return Conflict(new { message = phongError });
+
         var exists = await _db.LopHocTrongKys.AnyAsync(l =>
             l.TenLop == ten && l.MaMonHoc == entity.MaMonHoc && l.MaHocKy == entity.MaHocKy && l.MaLopHocKy != id);
         if (exists)
@@ -246,6 +297,8 @@ public class LopHocTrongKyController : ControllerBase
             Thu = l.Thu,
             TietBatDau = l.TietBatDau,
             TietKetThuc = l.TietKetThuc,
+            NgayBatDau = l.NgayBatDau,
+            NgayKetThuc = l.NgayKetThuc,
             PhongHoc = l.PhongHoc?.Trim(),
         }).ToList();
 
@@ -281,5 +334,31 @@ public class LopHocTrongKyController : ControllerBase
         await _db.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    // Huỷ lớp (ít sinh viên): xoá lớp + huỷ tất cả đăng ký + điểm của sinh viên trong lớp đó
+    [HttpDelete("{id:int}/huy-lop")]
+    public async Task<IActionResult> HuyLop(int id)
+    {
+        var entity = await _db.LopHocTrongKys
+            .Include(l => l.DangKyLopHocs).ThenInclude(d => d.DiemHocPhan)
+            .Include(l => l.LichHocs)
+            .Include(l => l.LopHocKyGiangViens)
+            .FirstOrDefaultAsync(l => l.MaLopHocKy == id);
+
+        if (entity is null) return NotFound();
+
+        var soSinhVien = entity.DangKyLopHocs.Count;
+
+        foreach (var dk in entity.DangKyLopHocs)
+            if (dk.DiemHocPhan != null)
+                _db.DiemHocPhans.Remove(dk.DiemHocPhan);
+        _db.DangKyLopHocs.RemoveRange(entity.DangKyLopHocs);
+        _db.LichHocLopHocKys.RemoveRange(entity.LichHocs);
+        _db.LopHocKyGiangViens.RemoveRange(entity.LopHocKyGiangViens);
+        _db.LopHocTrongKys.Remove(entity);
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = $"Đã huỷ lớp và gỡ đăng ký của {soSinhVien} sinh viên" });
     }
 }

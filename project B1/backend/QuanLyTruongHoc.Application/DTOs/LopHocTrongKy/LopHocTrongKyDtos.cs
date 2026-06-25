@@ -1,8 +1,8 @@
 namespace QuanLyTruongHoc.Application.DTOs.LopHocTrongKy;
 
-public record LichHocDto(int MaLich, int Thu, int TietBatDau, int TietKetThuc, string? PhongHoc);
+public record LichHocDto(int MaLich, int Thu, int TietBatDau, int TietKetThuc, DateOnly NgayBatDau, DateOnly NgayKetThuc, string? PhongHoc);
 
-public record LichHocInput(int Thu, int TietBatDau, int TietKetThuc, string? PhongHoc);
+public record LichHocInput(int Thu, int TietBatDau, int TietKetThuc, DateOnly NgayBatDau, DateOnly NgayKetThuc, string? PhongHoc);
 
 public record LopHocTrongKyDto(
     int MaLopHocKy,

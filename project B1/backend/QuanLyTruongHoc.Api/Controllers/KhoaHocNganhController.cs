@@ -38,6 +38,7 @@ public class KhoaHocNganhController : ControllerBase
                 k.MaNganhHoc,
                 k.NganhHoc!.TenNganh,
                 k.NganhHoc!.KhoaVien!.TenKhoaVien,
+                k.NamNhapHoc,
                 k.NhomLopNganhs.Count))
             .ToListAsync();
 
@@ -57,6 +58,7 @@ public class KhoaHocNganhController : ControllerBase
                 k.MaNganhHoc,
                 k.NganhHoc!.TenNganh,
                 k.NganhHoc!.KhoaVien!.TenKhoaVien,
+                k.NamNhapHoc,
                 k.NhomLopNganhs.Count))
             .FirstOrDefaultAsync();
 
@@ -71,6 +73,9 @@ public class KhoaHocNganhController : ControllerBase
         if (string.IsNullOrWhiteSpace(ten))
             return BadRequest(new { message = "Tên khoá học không được để trống" });
 
+        if (request.NamNhapHoc < 2000 || request.NamNhapHoc > 2100)
+            return BadRequest(new { message = "Năm nhập học không hợp lệ" });
+
         var nganhHoc = await _db.NganhHocs.Include(n => n.KhoaVien).FirstOrDefaultAsync(n => n.MaNganh == request.MaNganhHoc);
         if (nganhHoc is null)
             return BadRequest(new { message = "Ngành học không tồn tại" });
@@ -79,12 +84,12 @@ public class KhoaHocNganhController : ControllerBase
         if (exists)
             return Conflict(new { message = "Khoá học này đã tồn tại trong ngành học đã chọn" });
 
-        var entity = new KhoaHocNganh { TenKhoaHoc = ten, MaNganhHoc = request.MaNganhHoc };
+        var entity = new KhoaHocNganh { TenKhoaHoc = ten, MaNganhHoc = request.MaNganhHoc, NamNhapHoc = request.NamNhapHoc };
         _db.KhoaHocNganhs.Add(entity);
         await _db.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetById), new { id = entity.MaKhoaHocNganh },
-            new KhoaHocNganhDto(entity.MaKhoaHocNganh, entity.TenKhoaHoc, entity.MaNganhHoc, nganhHoc.TenNganh, nganhHoc.KhoaVien!.TenKhoaVien, 0));
+            new KhoaHocNganhDto(entity.MaKhoaHocNganh, entity.TenKhoaHoc, entity.MaNganhHoc, nganhHoc.TenNganh, nganhHoc.KhoaVien!.TenKhoaVien, entity.NamNhapHoc, 0));
     }
 
     [HttpPut("{id:int}")]
@@ -97,6 +102,9 @@ public class KhoaHocNganhController : ControllerBase
         if (string.IsNullOrWhiteSpace(ten))
             return BadRequest(new { message = "Tên khoá học không được để trống" });
 
+        if (request.NamNhapHoc < 2000 || request.NamNhapHoc > 2100)
+            return BadRequest(new { message = "Năm nhập học không hợp lệ" });
+
         var nganhHocExists = await _db.NganhHocs.AnyAsync(n => n.MaNganh == request.MaNganhHoc);
         if (!nganhHocExists)
             return BadRequest(new { message = "Ngành học không tồn tại" });
@@ -108,6 +116,7 @@ public class KhoaHocNganhController : ControllerBase
 
         entity.TenKhoaHoc = ten;
         entity.MaNganhHoc = request.MaNganhHoc;
+        entity.NamNhapHoc = request.NamNhapHoc;
         await _db.SaveChangesAsync();
 
         return NoContent();

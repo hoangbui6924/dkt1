@@ -6,8 +6,9 @@ public record KhoaHocNganhDto(
     int MaNganhHoc,
     string TenNganh,
     string TenKhoaVien,
+    int NamNhapHoc,
     int SoNhomLop);
 
-public record CreateKhoaHocNganhRequest(string TenKhoaHoc, int MaNganhHoc);
+public record CreateKhoaHocNganhRequest(string TenKhoaHoc, int MaNganhHoc, int NamNhapHoc);
 
-public record UpdateKhoaHocNganhRequest(string TenKhoaHoc, int MaNganhHoc);
+public record UpdateKhoaHocNganhRequest(string TenKhoaHoc, int MaNganhHoc, int NamNhapHoc);

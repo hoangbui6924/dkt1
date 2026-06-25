@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Plus, Pencil, Trash2, Search, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CalendarClock, Plus, Pencil, Trash2, Search, X, Ban, Users } from 'lucide-react';
 import {
   type LopHocTrongKy as LopHocTrongKyModel,
   type LopHocTrongKyInput,
@@ -8,11 +9,13 @@ import {
   createLopHocTrongKy,
   updateLopHocTrongKy,
   deleteLopHocTrongKy,
+  huyLopHocTrongKy,
 } from '../../../services/lopHocTrongKyService';
 import { type HocKy, getHocKys } from '../../../services/hocKyService';
 import { type MonHoc, getMonHocs } from '../../../services/monHocService';
 import { type GiangVien, getGiangViens } from '../../../services/giangVienService';
 import Modal from '../../../components/Modal';
+import SearchableSelect from '../../../components/SearchableSelect';
 
 const ITEMS_PER_PAGE = 15;
 const LOAI_HINH_OPTIONS = ['Lý thuyết', 'Thực hành'] as const;
@@ -31,7 +34,25 @@ function tenThu(thu: number): string {
   return THU_OPTIONS.find((t) => t.value === thu)?.label ?? `Thứ ${thu}`;
 }
 
-const EMPTY_LICH: LichHocInput = { thu: 2, tietBatDau: 1, tietKetThuc: 2, phongHoc: '' };
+function formatNgay(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function dsTiet(bd: number, kt: number): string {
+  const arr: number[] = [];
+  for (let t = bd; t <= kt; t++) arr.push(t);
+  return arr.join(', ');
+}
+
+// Tên lớp lưu trong DB là "TênMônHọc N01" — form chỉ cho nhập phần hậu tố (N01) để gõ nhanh hơn.
+function tachHauToTenLop(tenLop: string, tenMonHoc: string): string {
+  if (tenMonHoc && tenLop.startsWith(tenMonHoc + ' ')) return tenLop.slice(tenMonHoc.length + 1);
+  return tenLop;
+}
+
+const EMPTY_LICH: LichHocInput = { thu: 2, tietBatDau: 1, tietKetThuc: 2, ngayBatDau: '', ngayKetThuc: '', phongHoc: '' };
 const EMPTY_FORM: LopHocTrongKyInput = {
   tenLop: '',
   loaiHinh: LOAI_HINH_OPTIONS[0],
@@ -41,6 +62,7 @@ const EMPTY_FORM: LopHocTrongKyInput = {
 };
 
 export default function LopHocTrongKyPage() {
+  const navigate = useNavigate();
   const [hocKys, setHocKys] = useState<HocKy[]>([]);
   const [monHocs, setMonHocs] = useState<MonHoc[]>([]);
   const [giangViens, setGiangViens] = useState<GiangVien[]>([]);
@@ -111,10 +133,16 @@ export default function LopHocTrongKyPage() {
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
+  // Buổi học mới mặc định khoảng ngày bằng khoảng ngày của học kỳ đang chọn cho tiện.
+  function taoLichMoi(): LichHocInput {
+    const hk = hocKys.find((h) => h.maHocKy === maHocKy);
+    return { ...EMPTY_LICH, ngayBatDau: hk?.ngayBatDau ?? '', ngayKetThuc: hk?.ngayKetThuc ?? '' };
+  }
+
   function openAddModal() {
     setEditing(null);
     setFormMaMonHoc(monHocs[0]?.maMonHoc ?? '');
-    setForm({ ...EMPTY_FORM, lichHocs: [{ ...EMPTY_LICH }] });
+    setForm({ ...EMPTY_FORM, lichHocs: [taoLichMoi()] });
     setFormError('');
     setModalOpen(true);
   }
@@ -123,7 +151,7 @@ export default function LopHocTrongKyPage() {
     setEditing(item);
     setFormMaMonHoc(item.maMonHoc);
     setForm({
-      tenLop: item.tenLop,
+      tenLop: tachHauToTenLop(item.tenLop, item.tenMonHoc),
       loaiHinh: item.loaiHinh,
       siSoToiDa: item.siSoToiDa,
       maGiangVien: item.maGiangVien,
@@ -131,6 +159,8 @@ export default function LopHocTrongKyPage() {
         thu: l.thu,
         tietBatDau: l.tietBatDau,
         tietKetThuc: l.tietKetThuc,
+        ngayBatDau: l.ngayBatDau,
+        ngayKetThuc: l.ngayKetThuc,
         phongHoc: l.phongHoc ?? '',
       })),
     });
@@ -138,8 +168,29 @@ export default function LopHocTrongKyPage() {
     setModalOpen(true);
   }
 
+  function handleChonMonHoc(maMonHoc: number) {
+    setFormMaMonHoc(maMonHoc);
+    setForm((f) => ({ ...f, maGiangVien: null }));
+  }
+
+  const tenMonHocHienTai = editing
+    ? editing.tenMonHoc
+    : monHocs.find((m) => m.maMonHoc === formMaMonHoc)?.tenMonHoc ?? '';
+
+  const monHocBoMon = monHocs.find((m) => m.maMonHoc === formMaMonHoc)?.maBoMon ?? null;
+
+  const giangViensLoc = useMemo(() => {
+    if (monHocBoMon == null) return giangViens;
+    const loc = giangViens.filter((g) => g.maBoMon === monHocBoMon);
+    if (form.maGiangVien != null && !loc.some((g) => g.maGiangVien === form.maGiangVien)) {
+      const hienTai = giangViens.find((g) => g.maGiangVien === form.maGiangVien);
+      if (hienTai) return [...loc, hienTai];
+    }
+    return loc;
+  }, [giangViens, monHocBoMon, form.maGiangVien]);
+
   function addLichRow() {
-    setForm((f) => ({ ...f, lichHocs: [...f.lichHocs, { ...EMPTY_LICH }] }));
+    setForm((f) => ({ ...f, lichHocs: [...f.lichHocs, taoLichMoi()] }));
   }
 
   function removeLichRow(idx: number) {
@@ -158,9 +209,9 @@ export default function LopHocTrongKyPage() {
       setFormError('Vui lòng chọn học kỳ');
       return;
     }
-    const ten = form.tenLop.trim();
-    if (!ten) {
-      setFormError('Tên lớp không được để trống');
+    const hauTo = form.tenLop.trim();
+    if (!hauTo) {
+      setFormError('Tên lớp không được để trống (VD: N01)');
       return;
     }
     if (!editing && !formMaMonHoc) {
@@ -175,12 +226,16 @@ export default function LopHocTrongKyPage() {
       setFormError('Lớp học cần ít nhất 1 buổi học trong tuần');
       return;
     }
+    if (form.lichHocs.some((l) => !l.ngayBatDau || !l.ngayKetThuc)) {
+      setFormError('Mỗi buổi học cần có đầy đủ ngày bắt đầu và ngày kết thúc');
+      return;
+    }
     setSaving(true);
     setFormError('');
     try {
       const payload: LopHocTrongKyInput = {
         ...form,
-        tenLop: ten,
+        tenLop: `${tenMonHocHienTai} ${hauTo}`.trim(),
         lichHocs: form.lichHocs.map((l) => ({ ...l, phongHoc: l.phongHoc?.trim() || null })),
       };
       if (editing) {
@@ -205,6 +260,20 @@ export default function LopHocTrongKyPage() {
       await loadLop(Number(maHocKy));
     } catch (err: any) {
       window.alert(err?.response?.data?.message ?? 'Không thể xoá lớp học này');
+    }
+  }
+
+  async function handleHuyLop(item: LopHocTrongKyModel) {
+    const confirmed = window.confirm(
+      `HUỶ LỚP "${item.tenMonHoc} (${item.tenLop})"?\n\nLớp đang có ${item.soLuongDaDangKy} sinh viên đăng ký. ` +
+        `Tất cả sẽ bị gỡ đăng ký và lớp sẽ bị xoá. Hành động này không thể hoàn tác.`,
+    );
+    if (!confirmed) return;
+    try {
+      await huyLopHocTrongKy(item.maLopHocKy);
+      await loadLop(Number(maHocKy));
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message ?? 'Không thể huỷ lớp học này');
     }
   }
 
@@ -317,7 +386,7 @@ export default function LopHocTrongKyPage() {
                 <th className="w-24 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                   Sĩ số
                 </th>
-                <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
+                <th className="w-40 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                   Hành động
                 </th>
               </tr>
@@ -368,15 +437,19 @@ export default function LopHocTrongKyPage() {
                       </td>
                       <td className="w-64 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                         {item.lichHocs.map((l) => (
-                          <div key={l.maLich} className="mb-0.5">
-                            {tenThu(l.thu)} - Tiết {l.tietBatDau}
-                            {l.tietKetThuc !== l.tietBatDau ? `-${l.tietKetThuc}` : ''}
-                            {l.phongHoc ? (
-                              <>
-                                {' - '}
-                                <span className="text-blue-600">{l.phongHoc}</span>
-                              </>
-                            ) : null}
+                          <div key={l.maLich} className="mb-1.5 last:mb-0">
+                            <div className="text-xs text-gray-400">
+                              Từ ngày {formatNgay(l.ngayBatDau)} đến ngày {formatNgay(l.ngayKetThuc)}
+                            </div>
+                            <div>
+                              {tenThu(l.thu)} - Tiết {dsTiet(l.tietBatDau, l.tietKetThuc)}
+                              {l.phongHoc ? (
+                                <>
+                                  {' - '}
+                                  <span className="text-blue-600">{l.phongHoc}</span>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
                         ))}
                       </td>
@@ -386,8 +459,16 @@ export default function LopHocTrongKyPage() {
                       <td className="w-24 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                         <span className="text-blue-600">{item.soLuongDaDangKy}</span>/{item.siSoToiDa}
                       </td>
-                      <td className="w-28 px-3 py-2">
+                      <td className="w-40 px-3 py-2">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            title="Xem danh sách sinh viên / nhập điểm"
+                            onClick={() => navigate(`/admin/hoc-vu/diem?maLopHocKy=${item.maLopHocKy}`)}
+                            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                          >
+                            <Users className="h-4 w-4" />
+                          </button>
                           <button
                             type="button"
                             title="Sửa"
@@ -396,14 +477,25 @@ export default function LopHocTrongKyPage() {
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
-                          <button
-                            type="button"
-                            title="Xoá"
-                            onClick={() => handleDelete(item)}
-                            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {item.soLuongDaDangKy > 0 ? (
+                            <button
+                              type="button"
+                              title="Huỷ lớp (gỡ đăng ký toàn bộ sinh viên & xoá lớp)"
+                              onClick={() => handleHuyLop(item)}
+                              className="flex h-7 w-7 items-center justify-center rounded border border-orange-200 text-orange-500 hover:border-orange-300 hover:bg-orange-50"
+                            >
+                              <Ban className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Xoá"
+                              onClick={() => handleDelete(item)}
+                              className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -454,25 +546,19 @@ export default function LopHocTrongKyPage() {
                 <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="maMonHoc">
                   Môn học
                 </label>
-                <select
+                <SearchableSelect
                   id="maMonHoc"
                   value={formMaMonHoc}
-                  onChange={(e) => setFormMaMonHoc(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="">-- Chọn môn học --</option>
-                  {monHocs.map((m) => (
-                    <option key={m.maMonHoc} value={m.maMonHoc}>
-                      {m.tenMonHoc} ({m.soTinChi} TC)
-                    </option>
-                  ))}
-                </select>
+                  onChange={handleChonMonHoc}
+                  placeholder="Gõ để tìm môn học..."
+                  options={monHocs.map((m) => ({ value: m.maMonHoc, label: `${m.tenMonHoc} (${m.soTinChi} TC)` }))}
+                />
               </div>
             )}
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="tenLop">
-                Tên lớp
+                Tên lớp (chỉ nhập hậu tố, VD: N01)
               </label>
               <input
                 id="tenLop"
@@ -482,6 +568,12 @@ export default function LopHocTrongKyPage() {
                 placeholder="VD: N01 hoặc N01.TH1"
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
+              <p className="mt-1 text-xs text-gray-400">
+                Tên lớp đầy đủ sẽ là:{' '}
+                <span className="font-medium text-gray-600">
+                  {tenMonHocHienTai || '...'} {form.tenLop.trim() || '...'}
+                </span>
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -530,12 +622,15 @@ export default function LopHocTrongKyPage() {
                 className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="">-- Chưa phân công --</option>
-                {giangViens.map((g) => (
+                {giangViensLoc.map((g) => (
                   <option key={g.maGiangVien} value={g.maGiangVien}>
                     {g.hoTen} ({g.tenBoMon ?? g.tenKhoaVien ?? 'Chưa rõ đơn vị'})
                   </option>
                 ))}
               </select>
+              {monHocBoMon != null && giangViensLoc.length === 0 && (
+                <p className="mt-1 text-xs text-amber-600">Bộ môn của môn học này chưa có giảng viên nào.</p>
+              )}
             </div>
 
             <div>
@@ -552,62 +647,85 @@ export default function LopHocTrongKyPage() {
 
               <div className="space-y-2">
                 {form.lichHocs.map((l, idx) => (
-                  <div key={idx} className="flex items-end gap-1.5 rounded border border-gray-200 p-2">
-                    <div className="w-24">
-                      <label className="mb-1 block text-xs text-gray-500">Thứ</label>
-                      <select
-                        value={l.thu}
-                        onChange={(e) => updateLichRow(idx, { thu: Number(e.target.value) })}
-                        className="w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs outline-none"
+                  <div key={idx} className="rounded border border-gray-200 p-2">
+                    <div className="flex items-end gap-1.5">
+                      <div className="w-24">
+                        <label className="mb-1 block text-xs text-gray-500">Thứ</label>
+                        <select
+                          value={l.thu}
+                          onChange={(e) => updateLichRow(idx, { thu: Number(e.target.value) })}
+                          className="w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs outline-none"
+                        >
+                          {THU_OPTIONS.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="w-16">
+                        <label className="mb-1 block text-xs text-gray-500">Tiết từ</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={l.tietBatDau}
+                          onChange={(e) => updateLichRow(idx, { tietBatDau: Number(e.target.value) })}
+                          className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
+                        />
+                      </div>
+                      <div className="w-16">
+                        <label className="mb-1 block text-xs text-gray-500">đến tiết</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={l.tietKetThuc}
+                          onChange={(e) => updateLichRow(idx, { tietKetThuc: Number(e.target.value) })}
+                          className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="mb-1 block text-xs text-gray-500">Phòng học</label>
+                        <input
+                          type="text"
+                          value={l.phongHoc ?? ''}
+                          onChange={(e) => updateLichRow(idx, { phongHoc: e.target.value })}
+                          placeholder="VD: 320-A4"
+                          className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeLichRow(idx)}
+                        disabled={form.lichHocs.length === 1}
+                        title="Bỏ buổi này"
+                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
                       >
-                        {THU_OPTIONS.map((t) => (
-                          <option key={t.value} value={t.value}>
-                            {t.label}
-                          </option>
-                        ))}
-                      </select>
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
-                    <div className="w-16">
-                      <label className="mb-1 block text-xs text-gray-500">Tiết từ</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={l.tietBatDau}
-                        onChange={(e) => updateLichRow(idx, { tietBatDau: Number(e.target.value) })}
-                        className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
-                      />
+                    <div className="mt-2 flex items-end gap-1.5">
+                      <div className="flex-1">
+                        <label className="mb-1 block text-xs text-gray-500">Từ ngày</label>
+                        <input
+                          type="date"
+                          value={l.ngayBatDau}
+                          onChange={(e) => updateLichRow(idx, { ngayBatDau: e.target.value })}
+                          className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="mb-1 block text-xs text-gray-500">Đến ngày</label>
+                        <input
+                          type="date"
+                          value={l.ngayKetThuc}
+                          onChange={(e) => updateLichRow(idx, { ngayKetThuc: e.target.value })}
+                          className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
+                        />
+                      </div>
+                      <div className="h-7 w-7 flex-shrink-0" />
                     </div>
-                    <div className="w-16">
-                      <label className="mb-1 block text-xs text-gray-500">đến tiết</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={l.tietKetThuc}
-                        onChange={(e) => updateLichRow(idx, { tietKetThuc: Number(e.target.value) })}
-                        className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="mb-1 block text-xs text-gray-500">Phòng học</label>
-                      <input
-                        type="text"
-                        value={l.phongHoc ?? ''}
-                        onChange={(e) => updateLichRow(idx, { phongHoc: e.target.value })}
-                        placeholder="VD: 320-A4"
-                        className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs outline-none"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeLichRow(idx)}
-                      disabled={form.lichHocs.length === 1}
-                      title="Bỏ buổi này"
-                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
                   </div>
                 ))}
               </div>

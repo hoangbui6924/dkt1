@@ -12,8 +12,14 @@ import SinhVien from './pages/admin/SinhVien/SinhVien';
 import NamHoc from './pages/admin/HocVu/NamHoc';
 import KhoaHocNganh from './pages/admin/HocVu/KhoaHocNganh';
 import LopHocTrongKy from './pages/admin/HocVu/LopHocTrongKy';
+import DangKyDot from './pages/admin/HocVu/DangKyDot';
+import NhapDiem from './pages/admin/HocVu/NhapDiem';
+import TaiLieu from './pages/admin/TaiLieu/TaiLieu';
 import StudentHome from './pages/student/Home/Home';
 import StudentKhungChuongTrinh from './pages/student/KhungChuongTrinh/KhungChuongTrinh';
+import StudentDangKy from './pages/student/DangKy/DangKy';
+import StudentKetQuaHocTap from './pages/student/KetQuaHocTap/KetQuaHocTap';
+import StudentTaiLieu from './pages/student/TaiLieu/TaiLieu';
 import AdminLayout from './components/layout/AdminLayout';
 import StudentLayout from './components/layout/StudentLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -52,6 +58,9 @@ export default function App() {
         <Route path="hoc-vu/nam-hoc" element={<NamHoc />} />
         <Route path="hoc-vu/khoa-hoc-nganh" element={<KhoaHocNganh />} />
         <Route path="hoc-vu/lop-hoc-ky" element={<LopHocTrongKy />} />
+        <Route path="hoc-vu/dang-ky" element={<DangKyDot />} />
+        <Route path="hoc-vu/diem" element={<NhapDiem />} />
+        <Route path="tai-lieu" element={<TaiLieu />} />
         <Route path="*" element={<ComingSoon />} />
       </Route>
 
@@ -65,6 +74,9 @@ export default function App() {
       >
         <Route index element={<StudentHome />} />
         <Route path="khung-chuong-trinh" element={<StudentKhungChuongTrinh />} />
+        <Route path="dang-ky" element={<StudentDangKy />} />
+        <Route path="ket-qua-hoc-tap" element={<StudentKetQuaHocTap />} />
+        <Route path="tai-lieu" element={<StudentTaiLieu />} />
         <Route path="*" element={<ComingSoon />} />
       </Route>
     </Routes>

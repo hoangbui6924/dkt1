@@ -5,15 +5,25 @@ export interface HocKy {
   tenHocKy: string;
   maNamHoc: number;
   tenNamHoc: string;
+  loaiHocKy: string;
   ngayBatDau: string;
   ngayKetThuc: string;
+  hanDangKyTu: string | null;
+  hanDangKyDen: string | null;
+  hanRutDangKyTu: string | null;
+  hanRutDangKyDen: string | null;
   soLopHoc: number;
 }
 
 export interface HocKyInput {
   tenHocKy: string;
+  loaiHocKy: string;
   ngayBatDau: string;
   ngayKetThuc: string;
+  hanDangKyTu: string | null;
+  hanDangKyDen: string | null;
+  hanRutDangKyTu: string | null;
+  hanRutDangKyDen: string | null;
 }
 
 export async function getHocKys(maNamHoc?: number): Promise<HocKy[]> {

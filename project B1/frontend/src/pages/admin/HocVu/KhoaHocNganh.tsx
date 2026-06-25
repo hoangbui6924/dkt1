@@ -40,6 +40,7 @@ export default function KhoaHocNganhPage() {
   const [editingKhoaHoc, setEditingKhoaHoc] = useState<KhoaHocNganhModel | null>(null);
   const [khoaHocFormTen, setKhoaHocFormTen] = useState('');
   const [khoaHocFormMaNganh, setKhoaHocFormMaNganh] = useState<number | ''>('');
+  const [khoaHocFormNamNhapHoc, setKhoaHocFormNamNhapHoc] = useState<number>(new Date().getFullYear());
   const [khoaHocFormError, setKhoaHocFormError] = useState('');
   const [savingKhoaHoc, setSavingKhoaHoc] = useState(false);
 
@@ -95,6 +96,7 @@ export default function KhoaHocNganhPage() {
     setEditingKhoaHoc(null);
     setKhoaHocFormTen('');
     setKhoaHocFormMaNganh(nganhHocs[0]?.maNganh ?? '');
+    setKhoaHocFormNamNhapHoc(new Date().getFullYear());
     setKhoaHocFormError('');
     setKhoaHocModalOpen(true);
   }
@@ -103,6 +105,7 @@ export default function KhoaHocNganhPage() {
     setEditingKhoaHoc(item);
     setKhoaHocFormTen(item.tenKhoaHoc);
     setKhoaHocFormMaNganh(item.maNganhHoc);
+    setKhoaHocFormNamNhapHoc(item.namNhapHoc || new Date().getFullYear());
     setKhoaHocFormError('');
     setKhoaHocModalOpen(true);
   }
@@ -117,13 +120,17 @@ export default function KhoaHocNganhPage() {
       setKhoaHocFormError('Vui lòng chọn ngành học');
       return;
     }
+    if (!khoaHocFormNamNhapHoc || khoaHocFormNamNhapHoc < 2000 || khoaHocFormNamNhapHoc > 2100) {
+      setKhoaHocFormError('Năm nhập học không hợp lệ');
+      return;
+    }
     setSavingKhoaHoc(true);
     setKhoaHocFormError('');
     try {
       if (editingKhoaHoc) {
-        await updateKhoaHocNganh(editingKhoaHoc.maKhoaHocNganh, ten, Number(khoaHocFormMaNganh));
+        await updateKhoaHocNganh(editingKhoaHoc.maKhoaHocNganh, ten, Number(khoaHocFormMaNganh), khoaHocFormNamNhapHoc);
       } else {
-        await createKhoaHocNganh(ten, Number(khoaHocFormMaNganh));
+        await createKhoaHocNganh(ten, Number(khoaHocFormMaNganh), khoaHocFormNamNhapHoc);
       }
       setKhoaHocModalOpen(false);
       await load();
@@ -309,6 +316,9 @@ export default function KhoaHocNganhPage() {
                   <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                     Khoa viện
                   </th>
+                  <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                    Năm nhập học
+                  </th>
                   <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                     Số nhóm lớp
                   </th>
@@ -352,6 +362,7 @@ export default function KhoaHocNganhPage() {
                   </th>
                   <th className="border-r border-gray-200"></th>
                   <th className="border-r border-gray-200"></th>
+                  <th className="border-r border-gray-200"></th>
                   <th></th>
                 </tr>
               </thead>
@@ -359,7 +370,7 @@ export default function KhoaHocNganhPage() {
               <tbody className="divide-y divide-gray-100">
                 {loading && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                       Đang tải...
                     </td>
                   </tr>
@@ -367,7 +378,7 @@ export default function KhoaHocNganhPage() {
 
                 {!loading && paginatedKhoaHocs.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                       <Layers3 className="mx-auto mb-2 h-10 w-10 opacity-40" />
                       <p>Không có dữ liệu</p>
                     </td>
@@ -390,6 +401,9 @@ export default function KhoaHocNganhPage() {
                         </td>
                         <td className="w-56 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                           {item.tenKhoaVien}
+                        </td>
+                        <td className="w-28 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
+                          {item.namNhapHoc || <span className="text-gray-400">-</span>}
                         </td>
                         <td className="w-32 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                           {item.soNhomLop}
@@ -650,6 +664,23 @@ export default function KhoaHocNganhPage() {
               </option>
             ))}
           </select>
+
+          <label className="mb-1.5 mt-4 block text-sm font-medium text-gray-700" htmlFor="khoaHocFormNamNhapHoc">
+            Năm nhập học
+          </label>
+          <input
+            id="khoaHocFormNamNhapHoc"
+            type="number"
+            min={2000}
+            max={2100}
+            value={khoaHocFormNamNhapHoc}
+            onChange={(e) => setKhoaHocFormNamNhapHoc(Number(e.target.value))}
+            placeholder="VD: 2025"
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Năm sinh viên khoá này bắt đầu nhập học — dùng để tính sinh viên đang ở năm thứ mấy khi đăng ký học phần.
+          </p>
 
           {khoaHocFormError && <div className="mt-1.5 text-sm text-red-600">{khoaHocFormError}</div>}
 

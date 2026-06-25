@@ -100,6 +100,52 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
                     b.ToTable("DiemHocPhans");
                 });
 
+            modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.DotDangKy", b =>
+                {
+                    b.Property<int>("MaDot")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MaDot"));
+
+                    b.Property<bool>("ChoPhepDangKy")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ChoPhepRut")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LoaiDot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("MaHocKy")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaKhoaVien")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("NamNhapHoc")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Ten")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ThoiGianBatDau")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("ThoiGianKetThuc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("MaDot");
+
+                    b.HasIndex("MaHocKy");
+
+                    b.HasIndex("MaKhoaVien");
+
+                    b.ToTable("DotDangKys");
+                });
+
             modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.GiangVien", b =>
                 {
                     b.Property<int>("MaGiangVien")
@@ -145,6 +191,22 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MaHocKy"));
+
+                    b.Property<DateTime?>("HanDangKyDen")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("HanDangKyTu")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("HanRutDangKyDen")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("HanRutDangKyTu")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("LoaiHocKy")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("MaNamHoc")
                         .HasColumnType("integer");
@@ -208,6 +270,9 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MaKhoaHocNganh"));
 
                     b.Property<int>("MaNganhHoc")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("NamNhapHoc")
                         .HasColumnType("integer");
 
                     b.Property<string>("TenKhoaHoc")
@@ -279,6 +344,12 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("MaLopHocKy")
                         .HasColumnType("integer");
+
+                    b.Property<DateOnly>("NgayBatDau")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("NgayKetThuc")
+                        .HasColumnType("date");
 
                     b.Property<string>("PhongHoc")
                         .HasColumnType("text");
@@ -601,6 +672,91 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
                     b.ToTable("TaiKhoans");
                 });
 
+            modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.TaiLieu", b =>
+                {
+                    b.Property<int>("MaTaiLieu")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MaTaiLieu"));
+
+                    b.Property<string>("GhiChuXuLy")
+                        .HasColumnType("text");
+
+                    b.Property<long>("KichThuocBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("LoaiTaiLieu")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("MaMonHoc")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaNguoiTaiLen")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("NgayTaiLen")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<byte[]>("NoiDungFile")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("SoTrang")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TenFile")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TenNguoiTaiLen")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TrangThai")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("MaTaiLieu");
+
+                    b.HasIndex("MaMonHoc");
+
+                    b.ToTable("TaiLieus");
+                });
+
+            modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.TaiLieuChunk", b =>
+                {
+                    b.Property<int>("MaChunk")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("MaChunk"));
+
+                    b.Property<int>("ChiSo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Embedding")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("MaTaiLieu")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NoiDung")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Trang")
+                        .HasColumnType("integer");
+
+                    b.HasKey("MaChunk");
+
+                    b.HasIndex("MaTaiLieu");
+
+                    b.ToTable("TaiLieuChunks");
+                });
+
             modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.BoMon", b =>
                 {
                     b.HasOne("QuanLyTruongHoc.Domain.Entities.KhoaVien", "KhoaVien")
@@ -639,6 +795,24 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("DangKyLopHoc");
+                });
+
+            modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.DotDangKy", b =>
+                {
+                    b.HasOne("QuanLyTruongHoc.Domain.Entities.HocKy", "HocKy")
+                        .WithMany()
+                        .HasForeignKey("MaHocKy")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("QuanLyTruongHoc.Domain.Entities.KhoaVien", "KhoaVien")
+                        .WithMany()
+                        .HasForeignKey("MaKhoaVien")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("HocKy");
+
+                    b.Navigation("KhoaVien");
                 });
 
             modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.GiangVien", b =>
@@ -872,6 +1046,27 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
                     b.Navigation("Quyen");
                 });
 
+            modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.TaiLieu", b =>
+                {
+                    b.HasOne("QuanLyTruongHoc.Domain.Entities.MonHoc", "MonHoc")
+                        .WithMany()
+                        .HasForeignKey("MaMonHoc")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("MonHoc");
+                });
+
+            modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.TaiLieuChunk", b =>
+                {
+                    b.HasOne("QuanLyTruongHoc.Domain.Entities.TaiLieu", "TaiLieu")
+                        .WithMany("Chunks")
+                        .HasForeignKey("MaTaiLieu")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TaiLieu");
+                });
+
             modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.BoMon", b =>
                 {
                     b.Navigation("GiangViens");
@@ -954,6 +1149,11 @@ namespace QuanLyTruongHoc.Infrastructure.Persistence.Migrations
                     b.Navigation("DangKyLopHocs");
 
                     b.Navigation("KetQuaHocTapKys");
+                });
+
+            modelBuilder.Entity("QuanLyTruongHoc.Domain.Entities.TaiLieu", b =>
+                {
+                    b.Navigation("Chunks");
                 });
 #pragma warning restore 612, 618
         }

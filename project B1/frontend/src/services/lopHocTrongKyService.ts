@@ -5,6 +5,8 @@ export interface LichHoc {
   thu: number;
   tietBatDau: number;
   tietKetThuc: number;
+  ngayBatDau: string;
+  ngayKetThuc: string;
   phongHoc: string | null;
 }
 
@@ -12,6 +14,8 @@ export interface LichHocInput {
   thu: number;
   tietBatDau: number;
   tietKetThuc: number;
+  ngayBatDau: string;
+  ngayKetThuc: string;
   phongHoc: string | null;
 }
 
@@ -62,4 +66,8 @@ export async function updateLopHocTrongKy(id: number, input: LopHocTrongKyInput)
 
 export async function deleteLopHocTrongKy(id: number): Promise<void> {
   await api.delete(`/lop-hoc-ky/${id}`);
+}
+
+export async function huyLopHocTrongKy(id: number): Promise<void> {
+  await api.delete(`/lop-hoc-ky/${id}/huy-lop`);
 }

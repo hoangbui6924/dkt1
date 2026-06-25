@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<TaiKhoan> TaiKhoans => Set<TaiKhoan>();
     public DbSet<NamHoc> NamHocs => Set<NamHoc>();
     public DbSet<HocKy> HocKys => Set<HocKy>();
+    public DbSet<DotDangKy> DotDangKys => Set<DotDangKy>();
     public DbSet<KhoaVien> KhoaViens => Set<KhoaVien>();
     public DbSet<NganhHoc> NganhHocs => Set<NganhHoc>();
     public DbSet<KhoaHocNganh> KhoaHocNganhs => Set<KhoaHocNganh>();
@@ -27,6 +28,8 @@ public class AppDbContext : DbContext
     public DbSet<DangKyLopHoc> DangKyLopHocs => Set<DangKyLopHoc>();
     public DbSet<DiemHocPhan> DiemHocPhans => Set<DiemHocPhan>();
     public DbSet<KetQuaHocTapKy> KetQuaHocTapKys => Set<KetQuaHocTapKy>();
+    public DbSet<TaiLieu> TaiLieus => Set<TaiLieu>();
+    public DbSet<TaiLieuChunk> TaiLieuChunks => Set<TaiLieuChunk>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -54,6 +57,23 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.MaHocKy);
             e.HasOne(x => x.NamHoc).WithMany(n => n.HocKys).HasForeignKey(x => x.MaNamHoc);
             e.HasIndex(x => new { x.MaNamHoc, x.TenHocKy }).IsUnique();
+            e.Property(x => x.HanDangKyTu).HasColumnType("timestamp without time zone");
+            e.Property(x => x.HanDangKyDen).HasColumnType("timestamp without time zone");
+            e.Property(x => x.HanRutDangKyTu).HasColumnType("timestamp without time zone");
+            e.Property(x => x.HanRutDangKyDen).HasColumnType("timestamp without time zone");
+        });
+
+        b.Entity<DotDangKy>(e =>
+        {
+            e.HasKey(x => x.MaDot);
+            e.HasOne(x => x.HocKy).WithMany().HasForeignKey(x => x.MaHocKy);
+            e.HasOne(x => x.KhoaVien)
+                .WithMany()
+                .HasForeignKey(x => x.MaKhoaVien)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.ThoiGianBatDau).HasColumnType("timestamp without time zone");
+            e.Property(x => x.ThoiGianKetThuc).HasColumnType("timestamp without time zone");
         });
 
         b.Entity<KhoaVien>(e =>
@@ -212,6 +232,24 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.HocKy).WithMany().HasForeignKey(x => x.MaHocKy);
             e.Property(x => x.GPAKy).HasPrecision(4, 2);
             e.Property(x => x.GPATichLuyDenKy).HasPrecision(4, 2);
+        });
+
+        b.Entity<TaiLieu>(e =>
+        {
+            e.HasKey(x => x.MaTaiLieu);
+            e.HasOne(x => x.MonHoc)
+                .WithMany()
+                .HasForeignKey(x => x.MaMonHoc)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.NgayTaiLen).HasColumnType("timestamp without time zone");
+        });
+
+        b.Entity<TaiLieuChunk>(e =>
+        {
+            e.HasKey(x => x.MaChunk);
+            e.HasOne(x => x.TaiLieu).WithMany(t => t.Chunks).HasForeignKey(x => x.MaTaiLieu).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.MaTaiLieu);
         });
     }
 }
