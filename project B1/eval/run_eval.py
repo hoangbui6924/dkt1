@@ -43,7 +43,9 @@ def judge_scores(question, answer):
     prompt = (
         "Bạn là giám khảo chấm trợ lý ảo sinh viên. Cho CÂU HỎI và CÂU TRẢ LỜI, chấm HAI điểm 0-10:\n"
         "(1) CHẤT_LƯỢNG: trả lời đúng trọng tâm, liên quan, đủ ý.\n"
-        "(2) TRUNG_THỰC: KHÔNG bịa số liệu/quy định/sự kiện cụ thể của trường.\n"
+        "(2) TRUNG_THỰC: KHÔNG bịa số liệu/quy định VÔ LÝ hay TỰ MÂU THUẪN. Lưu ý: bạn KHÔNG có ngữ cảnh nguồn, "
+        "nên câu liệt kê dữ liệu của trường (khoa/môn/giảng viên...) một cách nhất quán, hoặc có trích nguồn, "
+        "thì coi như lấy từ hệ thống -> ĐỪNG trừ điểm chỉ vì bạn không tự kiểm chứng được. Chỉ trừ khi thấy bịa rõ ràng.\n"
         "Câu TỪ CHỐI hợp lệ (ngoài phạm vi) hoặc nói 'chưa có dữ liệu, liên hệ phòng/khoa' -> cho 10 cả hai.\n"
         "CHỈ trả về ĐÚNG HAI số 0-10 cách nhau dấu cách, không giải thích. Ví dụ: 9 10\n\n"
         f"CÂU HỎI: {question}\n\nCÂU TRẢ LỜI: {answer}\n\nĐiểm (chất_lượng trung_thực):"
