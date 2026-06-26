@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send, Bot, Copy, Check, RotateCcw, Trash2 } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, Copy, Check, RotateCcw, Trash2, CalendarPlus, ShieldCheck, ShieldAlert } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { hoiChatbotStream, type NguonTraLoi } from '../services/chatbotService';
+import { hoiChatbotStream, type NguonTraLoi, type HanhDongCho } from '../services/chatbotService';
+import { dangKyLop } from '../services/dangKyHocPhanService';
 import { getTaiLieuSinhVien } from '../services/taiLieuService';
 
 interface ChatMessage {
   role: 'user' | 'bot';
   text: string;
   nguon?: NguonTraLoi[];
+  hanhDong?: HanhDongCho;                                    // hành động GHI bot đề xuất (vd đăng ký lớp)
+  dkTrangThai?: 'cho' | 'dang' | 'xong' | 'loi' | 'huy';     // trạng thái xác nhận/thực thi đăng ký
+  dkKetQua?: string;
 }
+
+// 2 chế độ agentic (theo yêu cầu): mặc định CHỜ XÁC NHẬN (human-in-loop); hoặc TRAO QUYỀN tự chạy.
+type CheDoAgent = 'quy_tac' | 'tu_dong';
 
 interface MonOption {
   maMonHoc: number;
@@ -35,6 +42,26 @@ export default function ChatbotWidget() {
   const [maMonHoc, setMaMonHoc] = useState<number | ''>('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [cheDo, setCheDo] = useState<CheDoAgent>('quy_tac'); // mặc định an toàn: chờ xác nhận
+
+  function updateAt(list: ChatMessage[], i: number, patch: Partial<ChatMessage>): ChatMessage[] {
+    if (i < 0 || i >= list.length) return list;
+    const copy = [...list];
+    copy[i] = { ...copy[i], ...patch };
+    return copy;
+  }
+
+  // Gọi endpoint đăng ký THẬT (đủ validate điều kiện/trùng lịch phía server) — dùng cho cả xác nhận thủ công lẫn tự động.
+  async function thucHienDangKy(i: number, h: HanhDongCho) {
+    setMessages((m) => updateAt(m, i, { dkTrangThai: 'dang' }));
+    try {
+      await dangKyLop(h.maLopHocKy);
+      setMessages((m) => updateAt(m, i, { dkTrangThai: 'xong', dkKetQua: `Đã đăng ký ${h.moTa} thành công.` }));
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Đăng ký không thành công, vui lòng thử lại.';
+      setMessages((m) => updateAt(m, i, { dkTrangThai: 'loi', dkKetQua: msg }));
+    }
+  }
 
   function copyMessage(i: number, text: string) {
     navigator.clipboard
@@ -75,8 +102,9 @@ export default function ChatbotWidget() {
     // base + lượt người dùng + 1 bong bóng bot rỗng để token stream điền dần vào.
     setMessages([...base, { role: 'user', text: cauHoi }, { role: 'bot', text: '' }]);
     setLoading(true);
+    const botIdx = base.length + 1; // [...base, user, bot] -> bong bóng bot ở đây
     try {
-      const nguon = await hoiChatbotStream(
+      const { nguon, hanhDong } = await hoiChatbotStream(
         cauHoi,
         maMonHoc === '' ? null : Number(maMonHoc),
         lichSu,
@@ -88,12 +116,11 @@ export default function ChatbotWidget() {
             return copy;
           }),
       );
-      // Gắn nguồn trích dẫn (nếu có) vào lượt bot vừa stream xong.
-      setMessages((m) => {
-        const copy = [...m];
-        copy[copy.length - 1] = { ...copy[copy.length - 1], nguon };
-        return copy;
-      });
+      // Gắn nguồn + hành động đề xuất (nếu có). Chế độ tự động -> sang 'dang' luôn; mặc định -> 'cho' xác nhận.
+      const trangThaiBanDau = hanhDong ? (cheDo === 'tu_dong' ? 'dang' : 'cho') : undefined;
+      setMessages((m) => updateAt(m, botIdx, { nguon, hanhDong: hanhDong ?? undefined, dkTrangThai: trangThaiBanDau }));
+      // "Trao quyền nguy hiểm": tự đăng ký ngay (vẫn qua endpoint đủ validate). Mặc định chờ sinh viên bấm xác nhận.
+      if (hanhDong && cheDo === 'tu_dong') await thucHienDangKy(botIdx, hanhDong);
     } catch (err: any) {
       const msg = err?.message ?? 'Xin lỗi, mình chưa trả lời được lúc này. Vui lòng thử lại sau.';
       setMessages((m) => {
@@ -181,6 +208,31 @@ export default function ChatbotWidget() {
             </select>
           </div>
 
+          {/* Chế độ agentic: "Chủ động có quy tắc" (đề xuất + xác nhận) vs "Trao quyền" (tự đăng ký) */}
+          <div className="flex items-center gap-1.5 border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-xs">
+            <span className="text-gray-500">Đăng ký:</span>
+            <button
+              type="button"
+              onClick={() => setCheDo('quy_tac')}
+              title="Bot chỉ ĐỀ XUẤT — bạn bấm Xác nhận mới đăng ký (an toàn, mặc định)"
+              className={`flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition ${
+                cheDo === 'quy_tac' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Chủ động có quy tắc
+            </button>
+            <button
+              type="button"
+              onClick={() => setCheDo('tu_dong')}
+              title="Bot TỰ đăng ký ngay khi bạn yêu cầu, không hỏi lại — hãy cân nhắc"
+              className={`flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition ${
+                cheDo === 'tu_dong' ? 'bg-red-600 text-white' : 'text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              <ShieldAlert className="h-3.5 w-3.5" /> Trao quyền
+            </button>
+          </div>
+
           {/* Tin nhắn */}
           <div
             ref={scrollRef}
@@ -214,6 +266,40 @@ export default function ChatbotWidget() {
                         {Array.from(new Map(m.nguon.map((n) => [n.tenFile, n])).values())
                           .map((n) => `${n.tenFile} (tr.${n.trang})`)
                           .join(', ')}
+                      </div>
+                    )}
+                    {m.hanhDong && (
+                      <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs">
+                        <div className="flex items-center gap-1.5 font-semibold text-amber-800">
+                          <CalendarPlus className="h-3.5 w-3.5" /> Đề xuất đăng ký lớp
+                        </div>
+                        <div className="mt-1 text-gray-700">{m.hanhDong.moTa}</div>
+                        {m.dkTrangThai === 'cho' && (
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => m.hanhDong && thucHienDangKy(i, m.hanhDong)}
+                              className="rounded-md bg-blue-600 px-2.5 py-1 font-medium text-white hover:bg-blue-700"
+                            >
+                              Xác nhận đăng ký
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setMessages((mm) => updateAt(mm, i, { dkTrangThai: 'huy' }))}
+                              className="rounded-md border border-gray-300 px-2.5 py-1 text-gray-600 hover:bg-gray-100"
+                            >
+                              Huỷ
+                            </button>
+                          </div>
+                        )}
+                        {m.dkTrangThai === 'dang' && <div className="mt-1.5 text-gray-500">Đang đăng ký...</div>}
+                        {m.dkTrangThai === 'xong' && (
+                          <div className="mt-1.5 flex items-center gap-1 font-medium text-green-700">
+                            <Check className="h-3.5 w-3.5" /> {m.dkKetQua}
+                          </div>
+                        )}
+                        {m.dkTrangThai === 'loi' && <div className="mt-1.5 font-medium text-red-600">{m.dkKetQua}</div>}
+                        {m.dkTrangThai === 'huy' && <div className="mt-1.5 text-gray-400">Đã huỷ đề xuất.</div>}
                       </div>
                     )}
                     {m.role === 'bot' && m.text && (

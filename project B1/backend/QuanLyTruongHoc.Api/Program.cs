@@ -15,7 +15,9 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddMemoryCache();
+// SizeLimit (đơn vị = "số chunk" theo Size đặt ở mỗi entry) chặn cache phình vô hạn khi dữ liệu lớn:
+// vượt ngưỡng -> entry không cache (re-load mỗi query, chậm nhưng KHÔNG OOM). 50k headroom cho ~648 chunk hiện tại.
+builder.Services.AddMemoryCache(o => o.SizeLimit = 50_000);
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));

@@ -32,4 +32,8 @@ public record ChatbotRequest(string CauHoi, int? MaMonHoc, List<ChatLichSuItem>?
 
 public record NguonTraLoiDto(int MaTaiLieu, string TenFile, int Trang);
 
-public record ChatbotResponse(string TraLoi, List<NguonTraLoiDto> Nguon);
+// Hành động GHI mà chatbot ĐỀ XUẤT (chưa thực thi) — FE quyết định xác nhận (human-in-loop) hay tự chạy.
+// Loai hiện có: "dang_ky_lop_hoc". MoTa = mô tả người-đọc cho modal xác nhận.
+public record HanhDongCho(string Loai, int MaLopHocKy, string MoTa);
+
+public record ChatbotResponse(string TraLoi, List<NguonTraLoiDto> Nguon, HanhDongCho? HanhDong = null);
