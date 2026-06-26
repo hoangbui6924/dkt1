@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("QuanLyTruongHoc.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ca4500d55472d120355c63af0e29600008be5508")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+49710127628a8089282b32f735e1532f72063fd1")]
 [assembly: System.Reflection.AssemblyProductAttribute("QuanLyTruongHoc.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("QuanLyTruongHoc.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
