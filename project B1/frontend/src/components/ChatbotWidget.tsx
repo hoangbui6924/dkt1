@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send, Bot, Loader2 } from 'lucide-react';
-import { hoiChatbot, type NguonTraLoi } from '../services/chatbotService';
+import { MessageCircle, X, Send, Bot, Copy, Check, RotateCcw, Trash2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { hoiChatbotStream, type NguonTraLoi } from '../services/chatbotService';
 import { getTaiLieuSinhVien } from '../services/taiLieuService';
 
 interface ChatMessage {
@@ -32,6 +34,17 @@ export default function ChatbotWidget() {
   const [monOptions, setMonOptions] = useState<MonOption[]>([]);
   const [maMonHoc, setMaMonHoc] = useState<number | ''>('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  function copyMessage(i: number, text: string) {
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setCopiedIdx(i);
+        setTimeout(() => setCopiedIdx((c) => (c === i ? null : c)), 1500);
+      })
+      .catch(() => {});
+  }
 
   useEffect(() => {
     // Lấy danh sách môn có giáo trình để cho phép hỏi theo môn cụ thể
@@ -50,28 +63,65 @@ export default function ChatbotWidget() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, loading, open]);
 
-  async function handleSend() {
-    const cauHoi = input.trim();
+  // Gửi 1 câu hỏi, dựng ngữ cảnh từ `base` (cho phép regenerate dùng lịch sử đã cắt).
+  async function sendQuestion(cauHoi: string, base: ChatMessage[]) {
     if (!cauHoi || loading) return;
     // Lịch sử = các lượt trước (bỏ lời chào tĩnh đầu tiên), gửi kèm để bot nhớ ngữ cảnh
-    const lichSu = messages
+    const lichSu = base
       .slice(1)
       .slice(-8)
       .map((m) => ({ vaiTro: m.role, noiDung: m.text }));
     setInput('');
-    setMessages((m) => [...m, { role: 'user', text: cauHoi }]);
+    // base + lượt người dùng + 1 bong bóng bot rỗng để token stream điền dần vào.
+    setMessages([...base, { role: 'user', text: cauHoi }, { role: 'bot', text: '' }]);
     setLoading(true);
     try {
-      const res = await hoiChatbot(cauHoi, maMonHoc === '' ? null : Number(maMonHoc), lichSu);
-      setMessages((m) => [...m, { role: 'bot', text: res.traLoi, nguon: res.nguon }]);
+      const nguon = await hoiChatbotStream(
+        cauHoi,
+        maMonHoc === '' ? null : Number(maMonHoc),
+        lichSu,
+        (delta) =>
+          setMessages((m) => {
+            const copy = [...m];
+            const last = copy[copy.length - 1];
+            copy[copy.length - 1] = { ...last, text: last.text + delta };
+            return copy;
+          }),
+      );
+      // Gắn nguồn trích dẫn (nếu có) vào lượt bot vừa stream xong.
+      setMessages((m) => {
+        const copy = [...m];
+        copy[copy.length - 1] = { ...copy[copy.length - 1], nguon };
+        return copy;
+      });
     } catch (err: any) {
-      setMessages((m) => [
-        ...m,
-        { role: 'bot', text: err?.response?.data?.message ?? 'Xin lỗi, mình chưa trả lời được lúc này. Vui lòng thử lại sau.' },
-      ]);
+      const msg = err?.message ?? 'Xin lỗi, mình chưa trả lời được lúc này. Vui lòng thử lại sau.';
+      setMessages((m) => {
+        const copy = [...m];
+        copy[copy.length - 1] = { role: 'bot', text: msg };
+        return copy;
+      });
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSend() {
+    sendQuestion(input.trim(), messages);
+  }
+
+  // Hỏi lại câu hỏi gần nhất (bỏ câu trả lời cũ) — micro-UX "tạo lại".
+  function regenerate() {
+    if (loading) return;
+    let idx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') { idx = i; break; }
+    }
+    if (idx >= 0) sendQuestion(messages[idx].text, messages.slice(0, idx));
+  }
+
+  function clearChat() {
+    if (!loading) setMessages([LOI_CHAO]);
   }
 
   return (
@@ -97,9 +147,21 @@ export default function ChatbotWidget() {
               <Bot className="h-5 w-5" />
               <span className="font-semibold">Trợ lý ảo sinh viên</span>
             </div>
-            <button type="button" onClick={() => setOpen(false)} aria-label="Đóng" className="hover:opacity-80">
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={clearChat}
+                disabled={loading || messages.length <= 1}
+                aria-label="Xoá hội thoại"
+                title="Hội thoại mới"
+                className="rounded p-1 transition hover:bg-white/20 disabled:opacity-40"
+              >
+                <Trash2 className="h-[18px] w-[18px]" />
+              </button>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Đóng" className="rounded p-1 transition hover:bg-white/20">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* Chọn phạm vi môn học */}
@@ -120,32 +182,61 @@ export default function ChatbotWidget() {
           </div>
 
           {/* Tin nhắn */}
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14.5px] ${
-                    m.role === 'user'
-                      ? 'rounded-br-sm bg-blue-600 text-white'
-                      : 'rounded-bl-sm bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {m.text}
-                  {m.nguon && m.nguon.length > 0 && (
-                    <div className="mt-2 border-t border-gray-200 pt-1.5 text-xs text-gray-500">
-                      Nguồn:{' '}
-                      {Array.from(new Map(m.nguon.map((n) => [n.tenFile, n])).values())
-                        .map((n) => `${n.tenFile} (tr.${n.trang})`)
-                        .join(', ')}
-                    </div>
-                  )}
+          <div
+            ref={scrollRef}
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+            className="flex-1 space-y-3 overflow-y-auto p-3"
+          >
+            {messages.map((m, i) => {
+              // Ẩn bong bóng bot rỗng (đang chờ token đầu) — đã có typing indicator thay thế.
+              if (m.role === 'bot' && m.text === '') return null;
+              return (
+                <div key={i} className={`group flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`relative max-w-[85%] rounded-2xl px-3.5 py-2 text-[14.5px] ${
+                      m.role === 'user'
+                        ? 'whitespace-pre-wrap rounded-br-sm bg-blue-600 text-white'
+                        : 'rounded-bl-sm bg-gray-100 text-gray-800'
+                    }`}
+                  >
+                    {m.role === 'user' ? (
+                      m.text
+                    ) : (
+                      <div className="prose prose-sm max-w-none text-gray-800 prose-headings:my-1.5 prose-headings:text-[15px] prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-table:my-1.5 prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-code:text-[13px] prose-pre:my-1">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                      </div>
+                    )}
+                    {m.nguon && m.nguon.length > 0 && (
+                      <div className="mt-2 border-t border-gray-200 pt-1.5 text-xs text-gray-500">
+                        Nguồn:{' '}
+                        {Array.from(new Map(m.nguon.map((n) => [n.tenFile, n])).values())
+                          .map((n) => `${n.tenFile} (tr.${n.trang})`)
+                          .join(', ')}
+                      </div>
+                    )}
+                    {m.role === 'bot' && m.text && (
+                      <button
+                        type="button"
+                        onClick={() => copyMessage(i, m.text)}
+                        aria-label="Sao chép câu trả lời"
+                        title="Sao chép"
+                        className="absolute -right-1.5 -top-1.5 rounded-full border border-gray-200 bg-white p-1 text-gray-400 opacity-0 shadow-sm transition hover:text-blue-600 focus:opacity-100 group-hover:opacity-100"
+                      >
+                        {copiedIdx === i ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm bg-gray-100 px-3.5 py-2 text-sm text-gray-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Đang tìm trong tài liệu...
+              );
+            })}
+            {loading && messages[messages.length - 1]?.text === '' && (
+              <div className="flex justify-start" aria-label="Trợ lý đang soạn câu trả lời">
+                <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm bg-gray-100 px-4 py-3">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.3s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.15s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
                 </div>
               </div>
             )}
@@ -153,6 +244,18 @@ export default function ChatbotWidget() {
 
           {/* Ô nhập */}
           <div className="flex items-end gap-2 border-t border-gray-200 p-3">
+            {messages.length > 1 && (
+              <button
+                type="button"
+                onClick={regenerate}
+                disabled={loading}
+                aria-label="Tạo lại câu trả lời gần nhất"
+                title="Tạo lại câu trả lời"
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-gray-300 text-gray-500 transition hover:bg-gray-50 hover:text-blue-600 disabled:opacity-40"
+              >
+                <RotateCcw className="h-[18px] w-[18px]" />
+              </button>
+            )}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
