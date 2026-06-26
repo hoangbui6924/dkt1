@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GraduationCap, Plus, Pencil, Trash2, Search, ChevronsUpDown, KeyRound, FileUp } from 'lucide-react';
+import { GraduationCap, Plus, Pencil, Trash2, Search, KeyRound, FileUp } from 'lucide-react';
 import {
   type SinhVien as SinhVienModel,
   type CreateSinhVienInput,
@@ -14,11 +14,12 @@ import { type NhomLopNganh, getNhomLopNganhs } from '../../../services/nhomLopNg
 import { type KhoaVien, getKhoaViens } from '../../../services/khoaVienService';
 import { type NganhHoc, getNganhHocs } from '../../../services/nganhHocService';
 import Modal from '../../../components/Modal';
+import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
 import ImportSinhVienModal from './ImportSinhVienModal';
 
 const ITEMS_PER_PAGE = 15;
 
-type SortDir = 'asc' | 'desc';
+type SortField = 'maSoSV' | 'hoTen' | 'khoaHoc' | 'nhomLop' | 'gpa';
 
 const EMPTY_CREATE_FORM: CreateSinhVienInput = {
   maSoSV: '',
@@ -28,6 +29,24 @@ const EMPTY_CREATE_FORM: CreateSinhVienInput = {
   maKhoaHocNganh: 0,
   maNhomLop: null,
 };
+
+// Mốc GPA: tính từ 2.0 trở lên, mỗi mốc cách nhau 0.4 (cộng thêm mốc "Dưới 2.0" cho đầy đủ)
+const GPA_BUCKETS: { key: string; label: string; test: (g: number) => boolean }[] = [
+  { key: 'duoi-2.0', label: 'Dưới 2.0', test: (g) => g < 2.0 },
+  { key: '2.0-2.4', label: '2.0 - 2.4', test: (g) => g >= 2.0 && g < 2.4 },
+  { key: '2.4-2.8', label: '2.4 - 2.8', test: (g) => g >= 2.4 && g < 2.8 },
+  { key: '2.8-3.2', label: '2.8 - 3.2', test: (g) => g >= 2.8 && g < 3.2 },
+  { key: '3.2-3.6', label: '3.2 - 3.6', test: (g) => g >= 3.2 && g < 3.6 },
+  { key: '3.6-4.0', label: '3.6 - 4.0', test: (g) => g >= 3.6 },
+];
+
+function gpaBucketKey(gpa: number): string {
+  return GPA_BUCKETS.find((b) => b.test(gpa))?.key ?? GPA_BUCKETS[0].key;
+}
+
+function tenKhoaHocNganh(item: SinhVienModel): string {
+  return `${item.tenKhoaHoc} (${item.tenNganh})`;
+}
 
 export default function SinhVienPage() {
   const [items, setItems] = useState<SinhVienModel[]>([]);
@@ -40,9 +59,16 @@ export default function SinhVienPage() {
   const [importModalOpen, setImportModalOpen] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<SortField>('hoTen');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
+
+  // Lọc theo từng cột kiểu Excel AutoFilter: null = chưa lọc (hiển thị tất cả)
+  const [filterMaSoSV, setFilterMaSoSV] = useState<Set<string> | null>(null);
+  const [filterHoTen, setFilterHoTen] = useState<Set<string> | null>(null);
+  const [filterKhoaHoc, setFilterKhoaHoc] = useState<Set<string> | null>(null);
+  const [filterNhomLop, setFilterNhomLop] = useState<Set<string> | null>(null);
+  const [filterGpa, setFilterGpa] = useState<Set<string> | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SinhVienModel | null>(null);
@@ -78,34 +104,80 @@ export default function SinhVienPage() {
     load();
   }, []);
 
-  useEffect(() => {
-    const close = () => setSortMenuOpen(false);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, []);
-
   const nhomLopsTrongKhoaHoc = useMemo(
     () => (form.maKhoaHocNganh ? nhomLops.filter((n) => n.maKhoaHocNganh === form.maKhoaHocNganh) : []),
     [nhomLops, form.maKhoaHocNganh],
+  );
+
+  // Danh sách giá trị duy nhất cho từng cột, dùng cho dropdown lọc kiểu Excel
+  const optionsMaSoSV = useMemo(
+    () => [...new Set(items.map((i) => i.maSoSV))].sort().map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsHoTen = useMemo(
+    () => [...new Set(items.map((i) => i.hoTen))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsKhoaHoc = useMemo(
+    () => [...new Set(items.map(tenKhoaHocNganh))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsNhomLop = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.tenNhomLop ?? 'Chưa có'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsGpa = useMemo(
+    () => GPA_BUCKETS.map((b) => ({ value: b.key, label: b.label })),
+    [],
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let result = items;
     if (q) {
-      result = result.filter(
-        (i) => i.hoTen.toLowerCase().includes(q) || i.maSoSV.toLowerCase().includes(q),
-      );
+      result = result.filter((i) => i.hoTen.toLowerCase().includes(q) || i.maSoSV.toLowerCase().includes(q));
     }
-    result = [...result].sort((a, b) =>
-      sortDir === 'asc' ? a.hoTen.localeCompare(b.hoTen) : b.hoTen.localeCompare(a.hoTen),
-    );
+    if (filterMaSoSV) result = result.filter((i) => filterMaSoSV.has(i.maSoSV));
+    if (filterHoTen) result = result.filter((i) => filterHoTen.has(i.hoTen));
+    if (filterKhoaHoc) result = result.filter((i) => filterKhoaHoc.has(tenKhoaHocNganh(i)));
+    if (filterNhomLop) result = result.filter((i) => filterNhomLop.has(i.tenNhomLop ?? 'Chưa có'));
+    if (filterGpa) result = result.filter((i) => filterGpa.has(gpaBucketKey(i.gpaTichLuy)));
+
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'maSoSV':
+          cmp = a.maSoSV.localeCompare(b.maSoSV);
+          break;
+        case 'hoTen':
+          cmp = a.hoTen.localeCompare(b.hoTen);
+          break;
+        case 'khoaHoc':
+          cmp = tenKhoaHocNganh(a).localeCompare(tenKhoaHocNganh(b));
+          break;
+        case 'nhomLop':
+          cmp = (a.tenNhomLop ?? '').localeCompare(b.tenNhomLop ?? '');
+          break;
+        case 'gpa':
+          cmp = a.gpaTichLuy - b.gpaTichLuy;
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
     return result;
-  }, [items, search, sortDir]);
+  }, [items, search, sortField, sortDir, filterMaSoSV, filterHoTen, filterKhoaHoc, filterNhomLop, filterGpa]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  function setSort(field: SortField, dir: SortDir) {
+    setSortField(field);
+    setSortDir(dir);
+  }
 
   function openAddModal() {
     setEditing(null);
@@ -208,6 +280,19 @@ export default function SinhVienPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Tìm nhanh theo tên hoặc mã SV"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="w-56 bg-transparent text-sm outline-none"
+            />
+          </div>
           <button
             type="button"
             onClick={() => setImportModalOpen(true)}
@@ -244,96 +329,95 @@ export default function SinhVienPage() {
                 No.
               </th>
               <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Mã SV
-              </th>
-              <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-sm font-semibold text-gray-600">Họ tên</span>
-                  <div className="relative flex-shrink-0">
-                    <button
-                      type="button"
-                      className="text-gray-400 hover:text-blue-600"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSortMenuOpen((v) => !v);
-                      }}
-                    >
-                      <ChevronsUpDown className="h-3.5 w-3.5" />
-                    </button>
-                    {sortMenuOpen && (
-                      <div className="absolute right-0 z-50 mt-1 w-32 rounded border border-gray-200 bg-white shadow-lg">
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'asc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('asc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          A → Z
-                        </button>
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'desc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('desc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          Z → A
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </th>
-              <th className="w-44 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Khoá học ngành
-              </th>
-              <th className="w-44 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Nhóm lớp
-              </th>
-              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Tài khoản
-              </th>
-              <th className="w-24 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                GPA
-              </th>
-              <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
-                Hành động
-              </th>
-            </tr>
-
-            <tr className="border-b border-gray-200 bg-white">
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200 px-2 py-1">
-                <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5">
-                  <input
-                    type="text"
-                    placeholder="→ Tìm theo tên hoặc mã SV"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
+                  <span>Mã SV</span>
+                  <ExcelColumnFilter
+                    options={optionsMaSoSV}
+                    selected={filterMaSoSV}
+                    onChange={(s) => {
+                      setFilterMaSoSV(s);
                       setPage(1);
                     }}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                    sortDir={sortField === 'maSoSV' ? sortDir : null}
+                    onSort={(dir) => setSort('maSoSV', dir)}
                   />
-                  <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
                 </div>
               </th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th></th>
+              <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                <div className="flex items-center justify-between gap-1">
+                  <span>Họ tên</span>
+                  <ExcelColumnFilter
+                    options={optionsHoTen}
+                    selected={filterHoTen}
+                    onChange={(s) => {
+                      setFilterHoTen(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'hoTen' ? sortDir : null}
+                    onSort={(dir) => setSort('hoTen', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
+              </th>
+              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                <div className="flex items-center justify-between gap-1">
+                  <span>Khoá học ngành</span>
+                  <ExcelColumnFilter
+                    options={optionsKhoaHoc}
+                    selected={filterKhoaHoc}
+                    onChange={(s) => {
+                      setFilterKhoaHoc(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'khoaHoc' ? sortDir : null}
+                    onSort={(dir) => setSort('khoaHoc', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
+              </th>
+              <th className="w-44 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                <div className="flex items-center justify-between gap-1">
+                  <span>Nhóm lớp</span>
+                  <ExcelColumnFilter
+                    options={optionsNhomLop}
+                    selected={filterNhomLop}
+                    onChange={(s) => {
+                      setFilterNhomLop(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'nhomLop' ? sortDir : null}
+                    onSort={(dir) => setSort('nhomLop', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
+              </th>
+              <th className="w-28 border-b border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                <div className="flex items-center justify-between gap-1">
+                  <span>GPA</span>
+                  <ExcelColumnFilter
+                    options={optionsGpa}
+                    selected={filterGpa}
+                    onChange={(s) => {
+                      setFilterGpa(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'gpa' ? sortDir : null}
+                    onSort={(dir) => setSort('gpa', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                    searchPlaceholder="Tìm mốc điểm..."
+                  />
+                </div>
+              </th>
+              <th className="w-28 border-b border-l border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
+                Hành động
+              </th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-gray-100">
             {loading && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                   Đang tải...
                 </td>
               </tr>
@@ -341,7 +425,7 @@ export default function SinhVienPage() {
 
             {!loading && paginated.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                   <GraduationCap className="mx-auto mb-2 h-10 w-10 opacity-40" />
                   <p>Không có dữ liệu</p>
                 </td>
@@ -360,19 +444,14 @@ export default function SinhVienPage() {
                     <td className="border-r border-gray-200 px-3 py-2 text-sm font-medium text-gray-900">
                       {item.hoTen}
                     </td>
-                    <td className="w-44 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
+                    <td className="w-48 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                       {item.tenKhoaHoc} ({item.tenNganh})
                     </td>
                     <td className="w-44 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                       {item.tenNhomLop ?? <span className="text-gray-400">Chưa có</span>}
                     </td>
-                    <td className="w-36 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
-                      {item.tenDangNhapTaiKhoan ?? <span className="text-gray-400">-</span>}
-                    </td>
-                    <td className="w-24 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
-                      {item.gpaTichLuy.toFixed(2)}
-                    </td>
-                    <td className="w-28 px-3 py-2">
+                    <td className="w-28 px-3 py-2 text-sm text-gray-700">{item.gpaTichLuy.toFixed(2)}</td>
+                    <td className="w-28 border-l border-gray-200 px-3 py-2">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"

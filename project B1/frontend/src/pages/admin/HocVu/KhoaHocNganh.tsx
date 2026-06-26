@@ -16,11 +16,14 @@ import {
 } from '../../../services/nhomLopNganhService';
 import { type NganhHoc, getNganhHocs } from '../../../services/nganhHocService';
 import Modal from '../../../components/Modal';
+import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
 import SinhVienTheoNhomTab from './SinhVienTheoNhomTab';
 
 const ITEMS_PER_PAGE = 15;
 
 type Tab = 'khoaHoc' | 'nhomLop' | 'sinhVien';
+type KhoaHocSortField = 'tenKhoaHoc' | 'nganh' | 'khoaVien' | 'namNhapHoc' | 'soNhomLop';
+type NhomLopSortField = 'tenNhomLop' | 'khoaHoc' | 'nganh' | 'soSinhVien' | 'coVan';
 
 export default function KhoaHocNganhPage() {
   const [activeTab, setActiveTab] = useState<Tab>('khoaHoc');
@@ -33,8 +36,15 @@ export default function KhoaHocNganhPage() {
 
   // === Tab 1: Khoá học ngành ===
   const [khoaHocSearch, setKhoaHocSearch] = useState('');
-  const [khoaHocFilterNganh, setKhoaHocFilterNganh] = useState<number | ''>('');
+  const [khoaHocSortField, setKhoaHocSortField] = useState<KhoaHocSortField>('tenKhoaHoc');
+  const [khoaHocSortDir, setKhoaHocSortDir] = useState<SortDir>('desc');
   const [khoaHocPage, setKhoaHocPage] = useState(1);
+
+  const [filterKhoaHocTen, setFilterKhoaHocTen] = useState<Set<string> | null>(null);
+  const [filterKhoaHocNganh, setFilterKhoaHocNganh] = useState<Set<string> | null>(null);
+  const [filterKhoaHocKhoaVien, setFilterKhoaHocKhoaVien] = useState<Set<string> | null>(null);
+  const [filterKhoaHocNam, setFilterKhoaHocNam] = useState<Set<string> | null>(null);
+  const [filterKhoaHocSoNhomLop, setFilterKhoaHocSoNhomLop] = useState<Set<string> | null>(null);
 
   const [khoaHocModalOpen, setKhoaHocModalOpen] = useState(false);
   const [editingKhoaHoc, setEditingKhoaHoc] = useState<KhoaHocNganhModel | null>(null);
@@ -46,8 +56,15 @@ export default function KhoaHocNganhPage() {
 
   // === Tab 2: Nhóm lớp ngành ===
   const [nhomLopSearch, setNhomLopSearch] = useState('');
-  const [nhomLopFilterKhoaHoc, setNhomLopFilterKhoaHoc] = useState<number | ''>('');
+  const [nhomLopSortField, setNhomLopSortField] = useState<NhomLopSortField>('tenNhomLop');
+  const [nhomLopSortDir, setNhomLopSortDir] = useState<SortDir>('asc');
   const [nhomLopPage, setNhomLopPage] = useState(1);
+
+  const [filterNhomLopTen, setFilterNhomLopTen] = useState<Set<string> | null>(null);
+  const [filterNhomLopKhoaHoc, setFilterNhomLopKhoaHoc] = useState<Set<string> | null>(null);
+  const [filterNhomLopNganh, setFilterNhomLopNganh] = useState<Set<string> | null>(null);
+  const [filterNhomLopSoSV, setFilterNhomLopSoSV] = useState<Set<string> | null>(null);
+  const [filterNhomLopCoVan, setFilterNhomLopCoVan] = useState<Set<string> | null>(null);
 
   const [nhomLopModalOpen, setNhomLopModalOpen] = useState(false);
   const [editingNhomLop, setEditingNhomLop] = useState<NhomLopNganhModel | null>(null);
@@ -80,13 +97,80 @@ export default function KhoaHocNganhPage() {
   }, []);
 
   // --- Khoá học ngành: filter/paginate ---
+  const optionsKhoaHocTen = useMemo(
+    () => [...new Set(khoaHocs.map((i) => i.tenKhoaHoc))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [khoaHocs],
+  );
+  const optionsKhoaHocNganh = useMemo(
+    () => [...new Set(khoaHocs.map((i) => i.tenNganh))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [khoaHocs],
+  );
+  const optionsKhoaHocKhoaVien = useMemo(
+    () => [...new Set(khoaHocs.map((i) => i.tenKhoaVien))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [khoaHocs],
+  );
+  const optionsKhoaHocNam = useMemo(
+    () =>
+      [...new Set(khoaHocs.map((i) => String(i.namNhapHoc || '-')))]
+        .sort((a, b) => (a === '-' ? -1 : b === '-' ? 1 : Number(a) - Number(b)))
+        .map((v) => ({ value: v, label: v })),
+    [khoaHocs],
+  );
+  const optionsKhoaHocSoNhomLop = useMemo(
+    () =>
+      [...new Set(khoaHocs.map((i) => i.soNhomLop))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [khoaHocs],
+  );
+
   const filteredKhoaHocs = useMemo(() => {
     const q = khoaHocSearch.trim().toLowerCase();
     let result = khoaHocs;
-    if (khoaHocFilterNganh) result = result.filter((i) => i.maNganhHoc === khoaHocFilterNganh);
     if (q) result = result.filter((i) => i.tenKhoaHoc.toLowerCase().includes(q));
-    return [...result].sort((a, b) => b.tenKhoaHoc.localeCompare(a.tenKhoaHoc));
-  }, [khoaHocs, khoaHocSearch, khoaHocFilterNganh]);
+    if (filterKhoaHocTen) result = result.filter((i) => filterKhoaHocTen.has(i.tenKhoaHoc));
+    if (filterKhoaHocNganh) result = result.filter((i) => filterKhoaHocNganh.has(i.tenNganh));
+    if (filterKhoaHocKhoaVien) result = result.filter((i) => filterKhoaHocKhoaVien.has(i.tenKhoaVien));
+    if (filterKhoaHocNam) result = result.filter((i) => filterKhoaHocNam.has(String(i.namNhapHoc || '-')));
+    if (filterKhoaHocSoNhomLop) result = result.filter((i) => filterKhoaHocSoNhomLop.has(String(i.soNhomLop)));
+
+    return [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (khoaHocSortField) {
+        case 'tenKhoaHoc':
+          cmp = a.tenKhoaHoc.localeCompare(b.tenKhoaHoc);
+          break;
+        case 'nganh':
+          cmp = a.tenNganh.localeCompare(b.tenNganh);
+          break;
+        case 'khoaVien':
+          cmp = a.tenKhoaVien.localeCompare(b.tenKhoaVien);
+          break;
+        case 'namNhapHoc':
+          cmp = (a.namNhapHoc || 0) - (b.namNhapHoc || 0);
+          break;
+        case 'soNhomLop':
+          cmp = a.soNhomLop - b.soNhomLop;
+          break;
+      }
+      return khoaHocSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [
+    khoaHocs,
+    khoaHocSearch,
+    khoaHocSortField,
+    khoaHocSortDir,
+    filterKhoaHocTen,
+    filterKhoaHocNganh,
+    filterKhoaHocKhoaVien,
+    filterKhoaHocNam,
+    filterKhoaHocSoNhomLop,
+  ]);
+
+  function setKhoaHocSort(field: KhoaHocSortField, dir: SortDir) {
+    setKhoaHocSortField(field);
+    setKhoaHocSortDir(dir);
+  }
 
   const khoaHocTotalPages = Math.max(1, Math.ceil(filteredKhoaHocs.length / ITEMS_PER_PAGE));
   const khoaHocStartIndex = (khoaHocPage - 1) * ITEMS_PER_PAGE;
@@ -153,13 +237,80 @@ export default function KhoaHocNganhPage() {
   }
 
   // --- Nhóm lớp ngành: filter/paginate ---
+  const optionsNhomLopTen = useMemo(
+    () => [...new Set(nhomLops.map((i) => i.tenNhomLop))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [nhomLops],
+  );
+  const optionsNhomLopKhoaHoc = useMemo(
+    () => [...new Set(nhomLops.map((i) => i.tenKhoaHoc))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [nhomLops],
+  );
+  const optionsNhomLopNganh = useMemo(
+    () => [...new Set(nhomLops.map((i) => i.tenNganh))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [nhomLops],
+  );
+  const optionsNhomLopSoSV = useMemo(
+    () =>
+      [...new Set(nhomLops.map((i) => i.soSinhVien))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [nhomLops],
+  );
+  const optionsNhomLopCoVan = useMemo(
+    () =>
+      [...new Set(nhomLops.map((i) => i.tenCoVanHocTap ?? 'Chưa có'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [nhomLops],
+  );
+
   const filteredNhomLops = useMemo(() => {
     const q = nhomLopSearch.trim().toLowerCase();
     let result = nhomLops;
-    if (nhomLopFilterKhoaHoc) result = result.filter((i) => i.maKhoaHocNganh === nhomLopFilterKhoaHoc);
     if (q) result = result.filter((i) => i.tenNhomLop.toLowerCase().includes(q));
-    return [...result].sort((a, b) => a.tenNhomLop.localeCompare(b.tenNhomLop));
-  }, [nhomLops, nhomLopSearch, nhomLopFilterKhoaHoc]);
+    if (filterNhomLopTen) result = result.filter((i) => filterNhomLopTen.has(i.tenNhomLop));
+    if (filterNhomLopKhoaHoc) result = result.filter((i) => filterNhomLopKhoaHoc.has(i.tenKhoaHoc));
+    if (filterNhomLopNganh) result = result.filter((i) => filterNhomLopNganh.has(i.tenNganh));
+    if (filterNhomLopSoSV) result = result.filter((i) => filterNhomLopSoSV.has(String(i.soSinhVien)));
+    if (filterNhomLopCoVan) result = result.filter((i) => filterNhomLopCoVan.has(i.tenCoVanHocTap ?? 'Chưa có'));
+
+    return [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (nhomLopSortField) {
+        case 'tenNhomLop':
+          cmp = a.tenNhomLop.localeCompare(b.tenNhomLop);
+          break;
+        case 'khoaHoc':
+          cmp = a.tenKhoaHoc.localeCompare(b.tenKhoaHoc);
+          break;
+        case 'nganh':
+          cmp = a.tenNganh.localeCompare(b.tenNganh);
+          break;
+        case 'soSinhVien':
+          cmp = a.soSinhVien - b.soSinhVien;
+          break;
+        case 'coVan':
+          cmp = (a.tenCoVanHocTap ?? 'Chưa có').localeCompare(b.tenCoVanHocTap ?? 'Chưa có');
+          break;
+      }
+      return nhomLopSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [
+    nhomLops,
+    nhomLopSearch,
+    nhomLopSortField,
+    nhomLopSortDir,
+    filterNhomLopTen,
+    filterNhomLopKhoaHoc,
+    filterNhomLopNganh,
+    filterNhomLopSoSV,
+    filterNhomLopCoVan,
+  ]);
+
+  function setNhomLopSort(field: NhomLopSortField, dir: SortDir) {
+    setNhomLopSortField(field);
+    setNhomLopSortDir(dir);
+  }
 
   const nhomLopTotalPages = Math.max(1, Math.ceil(filteredNhomLops.length / ITEMS_PER_PAGE));
   const nhomLopStartIndex = (nhomLopPage - 1) * ITEMS_PER_PAGE;
@@ -268,24 +419,54 @@ export default function KhoaHocNganhPage() {
         </div>
 
         {activeTab === 'khoaHoc' && (
-          <button
-            type="button"
-            onClick={openAddKhoaHoc}
-            disabled={nganhHocs.length === 0}
-            className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" /> Thêm khoá học ngành
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Tìm nhanh theo tên khoá học"
+                value={khoaHocSearch}
+                onChange={(e) => {
+                  setKhoaHocSearch(e.target.value);
+                  setKhoaHocPage(1);
+                }}
+                className="w-56 bg-transparent text-sm outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={openAddKhoaHoc}
+              disabled={nganhHocs.length === 0}
+              className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" /> Thêm khoá học ngành
+            </button>
+          </div>
         )}
         {activeTab === 'nhomLop' && (
-          <button
-            type="button"
-            onClick={openAddNhomLop}
-            disabled={khoaHocs.length === 0}
-            className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" /> Thêm nhóm lớp ngành
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Tìm nhanh theo tên nhóm lớp"
+                value={nhomLopSearch}
+                onChange={(e) => {
+                  setNhomLopSearch(e.target.value);
+                  setNhomLopPage(1);
+                }}
+                className="w-56 bg-transparent text-sm outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={openAddNhomLop}
+              disabled={khoaHocs.length === 0}
+              className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" /> Thêm nhóm lớp ngành
+            </button>
+          </div>
         )}
       </div>
 
@@ -307,63 +488,89 @@ export default function KhoaHocNganhPage() {
                   <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                     No.
                   </th>
-                  <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Tên khoá học
+                  <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Tên khoá học</span>
+                      <ExcelColumnFilter
+                        options={optionsKhoaHocTen}
+                        selected={filterKhoaHocTen}
+                        onChange={(s) => {
+                          setFilterKhoaHocTen(s);
+                          setKhoaHocPage(1);
+                        }}
+                        sortDir={khoaHocSortField === 'tenKhoaHoc' ? khoaHocSortDir : null}
+                        onSort={(dir) => setKhoaHocSort('tenKhoaHoc', dir)}
+                        sortLabels={['A → Z', 'Z → A']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Ngành học
+                  <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Ngành học</span>
+                      <ExcelColumnFilter
+                        options={optionsKhoaHocNganh}
+                        selected={filterKhoaHocNganh}
+                        onChange={(s) => {
+                          setFilterKhoaHocNganh(s);
+                          setKhoaHocPage(1);
+                        }}
+                        sortDir={khoaHocSortField === 'nganh' ? khoaHocSortDir : null}
+                        onSort={(dir) => setKhoaHocSort('nganh', dir)}
+                        sortLabels={['A → Z', 'Z → A']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Khoa viện
+                  <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Khoa viện</span>
+                      <ExcelColumnFilter
+                        options={optionsKhoaHocKhoaVien}
+                        selected={filterKhoaHocKhoaVien}
+                        onChange={(s) => {
+                          setFilterKhoaHocKhoaVien(s);
+                          setKhoaHocPage(1);
+                        }}
+                        sortDir={khoaHocSortField === 'khoaVien' ? khoaHocSortDir : null}
+                        onSort={(dir) => setKhoaHocSort('khoaVien', dir)}
+                        sortLabels={['A → Z', 'Z → A']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Năm nhập học
+                  <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Năm nhập học</span>
+                      <ExcelColumnFilter
+                        options={optionsKhoaHocNam}
+                        selected={filterKhoaHocNam}
+                        onChange={(s) => {
+                          setFilterKhoaHocNam(s);
+                          setKhoaHocPage(1);
+                        }}
+                        sortDir={khoaHocSortField === 'namNhapHoc' ? khoaHocSortDir : null}
+                        onSort={(dir) => setKhoaHocSort('namNhapHoc', dir)}
+                        sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Số nhóm lớp
+                  <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Số nhóm lớp</span>
+                      <ExcelColumnFilter
+                        options={optionsKhoaHocSoNhomLop}
+                        selected={filterKhoaHocSoNhomLop}
+                        onChange={(s) => {
+                          setFilterKhoaHocSoNhomLop(s);
+                          setKhoaHocPage(1);
+                        }}
+                        sortDir={khoaHocSortField === 'soNhomLop' ? khoaHocSortDir : null}
+                        onSort={(dir) => setKhoaHocSort('soNhomLop', dir)}
+                        sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                      />
+                    </div>
                   </th>
                   <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                     Hành động
                   </th>
-                </tr>
-                <tr className="border-b border-gray-200 bg-white">
-                  <th className="border-r border-gray-200"></th>
-                  <th className="border-r border-gray-200 px-2 py-1">
-                    <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5">
-                      <input
-                        type="text"
-                        placeholder="→ Tìm theo tên khoá học"
-                        value={khoaHocSearch}
-                        onChange={(e) => {
-                          setKhoaHocSearch(e.target.value);
-                          setKhoaHocPage(1);
-                        }}
-                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                      />
-                      <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
-                    </div>
-                  </th>
-                  <th className="border-r border-gray-200 px-2 py-1">
-                    <select
-                      value={khoaHocFilterNganh}
-                      onChange={(e) => {
-                        setKhoaHocFilterNganh(e.target.value ? Number(e.target.value) : '');
-                        setKhoaHocPage(1);
-                      }}
-                      className="w-full rounded border border-gray-200 bg-white px-1.5 py-0.5 text-sm outline-none"
-                    >
-                      <option value="">Tất cả ngành</option>
-                      {nganhHocs.map((n) => (
-                        <option key={n.maNganh} value={n.maNganh}>
-                          {n.tenNganh}
-                        </option>
-                      ))}
-                    </select>
-                  </th>
-                  <th className="border-r border-gray-200"></th>
-                  <th className="border-r border-gray-200"></th>
-                  <th className="border-r border-gray-200"></th>
-                  <th></th>
                 </tr>
               </thead>
 
@@ -475,63 +682,89 @@ export default function KhoaHocNganhPage() {
                   <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                     No.
                   </th>
-                  <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Tên nhóm lớp
+                  <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Tên nhóm lớp</span>
+                      <ExcelColumnFilter
+                        options={optionsNhomLopTen}
+                        selected={filterNhomLopTen}
+                        onChange={(s) => {
+                          setFilterNhomLopTen(s);
+                          setNhomLopPage(1);
+                        }}
+                        sortDir={nhomLopSortField === 'tenNhomLop' ? nhomLopSortDir : null}
+                        onSort={(dir) => setNhomLopSort('tenNhomLop', dir)}
+                        sortLabels={['A → Z', 'Z → A']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Khoá học
+                  <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Khoá học</span>
+                      <ExcelColumnFilter
+                        options={optionsNhomLopKhoaHoc}
+                        selected={filterNhomLopKhoaHoc}
+                        onChange={(s) => {
+                          setFilterNhomLopKhoaHoc(s);
+                          setNhomLopPage(1);
+                        }}
+                        sortDir={nhomLopSortField === 'khoaHoc' ? nhomLopSortDir : null}
+                        onSort={(dir) => setNhomLopSort('khoaHoc', dir)}
+                        sortLabels={['A → Z', 'Z → A']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Ngành học
+                  <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Ngành học</span>
+                      <ExcelColumnFilter
+                        options={optionsNhomLopNganh}
+                        selected={filterNhomLopNganh}
+                        onChange={(s) => {
+                          setFilterNhomLopNganh(s);
+                          setNhomLopPage(1);
+                        }}
+                        sortDir={nhomLopSortField === 'nganh' ? nhomLopSortDir : null}
+                        onSort={(dir) => setNhomLopSort('nganh', dir)}
+                        sortLabels={['A → Z', 'Z → A']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Số sinh viên
+                  <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Số sinh viên</span>
+                      <ExcelColumnFilter
+                        options={optionsNhomLopSoSV}
+                        selected={filterNhomLopSoSV}
+                        onChange={(s) => {
+                          setFilterNhomLopSoSV(s);
+                          setNhomLopPage(1);
+                        }}
+                        sortDir={nhomLopSortField === 'soSinhVien' ? nhomLopSortDir : null}
+                        onSort={(dir) => setNhomLopSort('soSinhVien', dir)}
+                        sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                      />
+                    </div>
                   </th>
-                  <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                    Cố vấn học tập
+                  <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold text-gray-600">Cố vấn học tập</span>
+                      <ExcelColumnFilter
+                        options={optionsNhomLopCoVan}
+                        selected={filterNhomLopCoVan}
+                        onChange={(s) => {
+                          setFilterNhomLopCoVan(s);
+                          setNhomLopPage(1);
+                        }}
+                        sortDir={nhomLopSortField === 'coVan' ? nhomLopSortDir : null}
+                        onSort={(dir) => setNhomLopSort('coVan', dir)}
+                        sortLabels={['A → Z', 'Z → A']}
+                      />
+                    </div>
                   </th>
                   <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                     Hành động
                   </th>
-                </tr>
-                <tr className="border-b border-gray-200 bg-white">
-                  <th className="border-r border-gray-200"></th>
-                  <th className="border-r border-gray-200 px-2 py-1">
-                    <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5">
-                      <input
-                        type="text"
-                        placeholder="→ Tìm theo tên nhóm lớp"
-                        value={nhomLopSearch}
-                        onChange={(e) => {
-                          setNhomLopSearch(e.target.value);
-                          setNhomLopPage(1);
-                        }}
-                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                      />
-                      <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
-                    </div>
-                  </th>
-                  <th className="border-r border-gray-200 px-2 py-1">
-                    <select
-                      value={nhomLopFilterKhoaHoc}
-                      onChange={(e) => {
-                        setNhomLopFilterKhoaHoc(e.target.value ? Number(e.target.value) : '');
-                        setNhomLopPage(1);
-                      }}
-                      className="w-full rounded border border-gray-200 bg-white px-1.5 py-0.5 text-sm outline-none"
-                    >
-                      <option value="">Tất cả khoá học</option>
-                      {khoaHocs.map((k) => (
-                        <option key={k.maKhoaHocNganh} value={k.maKhoaHocNganh}>
-                          {k.tenKhoaHoc} ({k.tenNganh})
-                        </option>
-                      ))}
-                    </select>
-                  </th>
-                  <th className="border-r border-gray-200"></th>
-                  <th className="border-r border-gray-200"></th>
-                  <th className="border-r border-gray-200"></th>
-                  <th></th>
                 </tr>
               </thead>
 

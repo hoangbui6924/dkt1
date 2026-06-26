@@ -11,6 +11,7 @@ import {
 } from '../../../services/khungChuongTrinhService';
 import { type NganhHoc, getNganhHocs } from '../../../services/nganhHocService';
 import Modal from '../../../components/Modal';
+import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -23,6 +24,8 @@ interface Row {
   khung: KhungModel | null;
 }
 
+type SortField = 'tenNganh' | 'khoaVien' | 'tongTinChi' | 'batBuoc' | 'tuChon' | 'soMon';
+
 export default function KhungChuongTrinhPage() {
   const navigate = useNavigate();
   const [nganhHocs, setNganhHocs] = useState<NganhHoc[]>([]);
@@ -30,7 +33,16 @@ export default function KhungChuongTrinhPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<SortField>('tenNganh');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [page, setPage] = useState(1);
+
+  const [filterTenNganh, setFilterTenNganh] = useState<Set<string> | null>(null);
+  const [filterKhoaVien, setFilterKhoaVien] = useState<Set<string> | null>(null);
+  const [filterTongTinChi, setFilterTongTinChi] = useState<Set<string> | null>(null);
+  const [filterBatBuoc, setFilterBatBuoc] = useState<Set<string> | null>(null);
+  const [filterTuChon, setFilterTuChon] = useState<Set<string> | null>(null);
+  const [filterSoMon, setFilterSoMon] = useState<Set<string> | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<Row | null>(null);
@@ -65,15 +77,90 @@ export default function KhungChuongTrinhPage() {
     }));
   }, [nganhHocs, khungs]);
 
+  const optionsTenNganh = useMemo(
+    () => [...new Set(rows.map((r) => r.tenNganh))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [rows],
+  );
+  const optionsKhoaVien = useMemo(
+    () => [...new Set(rows.map((r) => r.tenKhoaVien))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [rows],
+  );
+  const optionsTongTinChi = useMemo(
+    () =>
+      [...new Set(rows.map((r) => (r.khung ? String(r.khung.tongTinChi) : '-')))]
+        .sort((a, b) => (a === '-' ? -1 : b === '-' ? 1 : Number(a) - Number(b)))
+        .map((v) => ({ value: v, label: v })),
+    [rows],
+  );
+  const optionsBatBuoc = useMemo(
+    () =>
+      [...new Set(rows.map((r) => (r.khung ? String(r.khung.soTinChiBatBuoc) : '-')))]
+        .sort((a, b) => (a === '-' ? -1 : b === '-' ? 1 : Number(a) - Number(b)))
+        .map((v) => ({ value: v, label: v })),
+    [rows],
+  );
+  const optionsTuChon = useMemo(
+    () =>
+      [...new Set(rows.map((r) => (r.khung ? String(r.khung.soTinChiTuChonToiThieu) : '-')))]
+        .sort((a, b) => (a === '-' ? -1 : b === '-' ? 1 : Number(a) - Number(b)))
+        .map((v) => ({ value: v, label: v })),
+    [rows],
+  );
+  const optionsSoMon = useMemo(
+    () =>
+      [...new Set(rows.map((r) => (r.khung ? String(r.khung.soMonHoc) : '-')))]
+        .sort((a, b) => (a === '-' ? -1 : b === '-' ? 1 : Number(a) - Number(b)))
+        .map((v) => ({ value: v, label: v })),
+    [rows],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.tenNganh.toLowerCase().includes(q));
-  }, [rows, search]);
+    let result = rows;
+    if (q) result = result.filter((r) => r.tenNganh.toLowerCase().includes(q));
+    if (filterTenNganh) result = result.filter((r) => filterTenNganh.has(r.tenNganh));
+    if (filterKhoaVien) result = result.filter((r) => filterKhoaVien.has(r.tenKhoaVien));
+    if (filterTongTinChi) result = result.filter((r) => filterTongTinChi.has(r.khung ? String(r.khung.tongTinChi) : '-'));
+    if (filterBatBuoc) result = result.filter((r) => filterBatBuoc.has(r.khung ? String(r.khung.soTinChiBatBuoc) : '-'));
+    if (filterTuChon)
+      result = result.filter((r) => filterTuChon.has(r.khung ? String(r.khung.soTinChiTuChonToiThieu) : '-'));
+    if (filterSoMon) result = result.filter((r) => filterSoMon.has(r.khung ? String(r.khung.soMonHoc) : '-'));
+
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'tenNganh':
+          cmp = a.tenNganh.localeCompare(b.tenNganh);
+          break;
+        case 'khoaVien':
+          cmp = a.tenKhoaVien.localeCompare(b.tenKhoaVien);
+          break;
+        case 'tongTinChi':
+          cmp = (a.khung?.tongTinChi ?? -1) - (b.khung?.tongTinChi ?? -1);
+          break;
+        case 'batBuoc':
+          cmp = (a.khung?.soTinChiBatBuoc ?? -1) - (b.khung?.soTinChiBatBuoc ?? -1);
+          break;
+        case 'tuChon':
+          cmp = (a.khung?.soTinChiTuChonToiThieu ?? -1) - (b.khung?.soTinChiTuChonToiThieu ?? -1);
+          break;
+        case 'soMon':
+          cmp = (a.khung?.soMonHoc ?? -1) - (b.khung?.soMonHoc ?? -1);
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return result;
+  }, [rows, search, sortField, sortDir, filterTenNganh, filterKhoaVien, filterTongTinChi, filterBatBuoc, filterTuChon, filterSoMon]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  function setSort(field: SortField, dir: SortDir) {
+    setSortField(field);
+    setSortDir(dir);
+  }
 
   function openCreateModal(row: Row) {
     setEditingRow(row);
@@ -145,6 +232,19 @@ export default function KhungChuongTrinhPage() {
             {khungs.length} / {nganhHocs.length} ngành đã có khung
           </span>
         </div>
+        <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1.5">
+          <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Tìm nhanh theo tên ngành học"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="w-56 bg-transparent text-sm outline-none"
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -156,46 +256,105 @@ export default function KhungChuongTrinhPage() {
               <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                 No.
               </th>
-              <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Ngành học
+              <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Ngành học</span>
+                  <ExcelColumnFilter
+                    options={optionsTenNganh}
+                    selected={filterTenNganh}
+                    onChange={(s) => {
+                      setFilterTenNganh(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'tenNganh' ? sortDir : null}
+                    onSort={(dir) => setSort('tenNganh', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Khoa viện
+              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Khoa viện</span>
+                  <ExcelColumnFilter
+                    options={optionsKhoaVien}
+                    selected={filterKhoaVien}
+                    onChange={(s) => {
+                      setFilterKhoaVien(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'khoaVien' ? sortDir : null}
+                    onSort={(dir) => setSort('khoaVien', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Tổng TC
+              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Tổng TC</span>
+                  <ExcelColumnFilter
+                    options={optionsTongTinChi}
+                    selected={filterTongTinChi}
+                    onChange={(s) => {
+                      setFilterTongTinChi(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'tongTinChi' ? sortDir : null}
+                    onSort={(dir) => setSort('tongTinChi', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
-              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Bắt buộc (yêu cầu/đã gán)
+              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Bắt buộc (yêu cầu/đã gán)</span>
+                  <ExcelColumnFilter
+                    options={optionsBatBuoc}
+                    selected={filterBatBuoc}
+                    onChange={(s) => {
+                      setFilterBatBuoc(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'batBuoc' ? sortDir : null}
+                    onSort={(dir) => setSort('batBuoc', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
-              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Tự chọn (tối thiểu/pool)
+              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Tự chọn (tối thiểu/pool)</span>
+                  <ExcelColumnFilter
+                    options={optionsTuChon}
+                    selected={filterTuChon}
+                    onChange={(s) => {
+                      setFilterTuChon(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'tuChon' ? sortDir : null}
+                    onSort={(dir) => setSort('tuChon', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
-              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Số môn
+              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Số môn</span>
+                  <ExcelColumnFilter
+                    options={optionsSoMon}
+                    selected={filterSoMon}
+                    onChange={(s) => {
+                      setFilterSoMon(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'soMon' ? sortDir : null}
+                    onSort={(dir) => setSort('soMon', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
               <th className="w-52 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                 Hành động
               </th>
-            </tr>
-            <tr className="border-b border-gray-200 bg-white">
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200 px-2 py-1">
-                <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5">
-                  <input
-                    type="text"
-                    placeholder="→ Tìm theo tên ngành học"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(1);
-                    }}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  />
-                  <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
-                </div>
-              </th>
-              <th className="border-r border-gray-200" colSpan={6}></th>
             </tr>
           </thead>
 

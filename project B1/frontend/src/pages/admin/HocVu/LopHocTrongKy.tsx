@@ -16,9 +16,12 @@ import { type MonHoc, getMonHocs } from '../../../services/monHocService';
 import { type GiangVien, getGiangViens } from '../../../services/giangVienService';
 import Modal from '../../../components/Modal';
 import SearchableSelect from '../../../components/SearchableSelect';
+import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
 
 const ITEMS_PER_PAGE = 15;
 const LOAI_HINH_OPTIONS = ['Lý thuyết', 'Thực hành'] as const;
+
+type SortField = 'lopHocPhan' | 'loaiHinh' | 'soTinChi' | 'giangVien';
 
 const THU_OPTIONS = [
   { value: 2, label: 'Thứ 2' },
@@ -46,6 +49,10 @@ function dsTiet(bd: number, kt: number): string {
   return arr.join(', ');
 }
 
+function lopHocPhanLabel(item: LopHocTrongKyModel): string {
+  return `${item.tenMonHoc} (${item.tenLop})`;
+}
+
 // Tên lớp lưu trong DB là "TênMônHọc N01" — form chỉ cho nhập phần hậu tố (N01) để gõ nhanh hơn.
 function tachHauToTenLop(tenLop: string, tenMonHoc: string): string {
   if (tenMonHoc && tenLop.startsWith(tenMonHoc + ' ')) return tenLop.slice(tenMonHoc.length + 1);
@@ -71,9 +78,15 @@ export default function LopHocTrongKyPage() {
   const [error, setError] = useState('');
 
   const [maHocKy, setMaHocKy] = useState<number | ''>('');
-  const [filterMonHoc, setFilterMonHoc] = useState<number | ''>('');
   const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<SortField>('lopHocPhan');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [page, setPage] = useState(1);
+
+  const [filterLopHocPhan, setFilterLopHocPhan] = useState<Set<string> | null>(null);
+  const [filterLoaiHinh, setFilterLoaiHinh] = useState<Set<string> | null>(null);
+  const [filterSoTinChi, setFilterSoTinChi] = useState<Set<string> | null>(null);
+  const [filterGiangVien, setFilterGiangVien] = useState<Set<string> | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<LopHocTrongKyModel | null>(null);
@@ -121,13 +134,67 @@ export default function LopHocTrongKyPage() {
     setPage(1);
   }, [maHocKy]);
 
+  const optionsLopHocPhan = useMemo(
+    () =>
+      [...items]
+        .sort((a, b) => a.tenMonHoc.localeCompare(b.tenMonHoc) || a.tenLop.localeCompare(b.tenLop))
+        .map(lopHocPhanLabel)
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsLoaiHinh = useMemo(
+    () => [...new Set(items.map((i) => i.loaiHinh))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsSoTinChi = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.soTinChi))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [items],
+  );
+  const optionsGiangVien = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.tenGiangVien ?? '-'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let result = items;
-    if (filterMonHoc) result = result.filter((i) => i.maMonHoc === filterMonHoc);
     if (q) result = result.filter((i) => i.tenLop.toLowerCase().includes(q) || i.tenMonHoc.toLowerCase().includes(q));
-    return [...result].sort((a, b) => a.tenMonHoc.localeCompare(b.tenMonHoc) || a.tenLop.localeCompare(b.tenLop));
-  }, [items, search, filterMonHoc]);
+    if (filterLopHocPhan) result = result.filter((i) => filterLopHocPhan.has(lopHocPhanLabel(i)));
+    if (filterLoaiHinh) result = result.filter((i) => filterLoaiHinh.has(i.loaiHinh));
+    if (filterSoTinChi) result = result.filter((i) => filterSoTinChi.has(String(i.soTinChi)));
+    if (filterGiangVien) result = result.filter((i) => filterGiangVien.has(i.tenGiangVien ?? '-'));
+
+    return [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'lopHocPhan':
+          cmp = a.tenMonHoc.localeCompare(b.tenMonHoc) || a.tenLop.localeCompare(b.tenLop);
+          break;
+        case 'loaiHinh':
+          cmp = a.loaiHinh.localeCompare(b.loaiHinh);
+          break;
+        case 'soTinChi':
+          cmp = a.soTinChi - b.soTinChi;
+          break;
+        case 'giangVien':
+          cmp = (a.tenGiangVien ?? '-').localeCompare(b.tenGiangVien ?? '-');
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [items, search, sortField, sortDir, filterLopHocPhan, filterLoaiHinh, filterSoTinChi, filterGiangVien]);
+
+  function setSort(field: SortField, dir: SortDir) {
+    setSortField(field);
+    setSortDir(dir);
+  }
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
@@ -316,25 +383,6 @@ export default function LopHocTrongKyPage() {
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">Môn học</label>
-          <select
-            value={filterMonHoc}
-            onChange={(e) => {
-              setFilterMonHoc(e.target.value ? Number(e.target.value) : '');
-              setPage(1);
-            }}
-            className="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm outline-none"
-          >
-            <option value="">Tất cả môn học</option>
-            {monHocs.map((m) => (
-              <option key={m.maMonHoc} value={m.maMonHoc}>
-                {m.tenMonHoc}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-2 py-1.5">
           <input
             type="text"
@@ -368,22 +416,74 @@ export default function LopHocTrongKyPage() {
                 <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                   No.
                 </th>
-                <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                  Lớp học phần
+                <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-sm font-semibold text-gray-600">Lớp học phần</span>
+                    <ExcelColumnFilter
+                      options={optionsLopHocPhan}
+                      selected={filterLopHocPhan}
+                      onChange={(s) => {
+                        setFilterLopHocPhan(s);
+                        setPage(1);
+                      }}
+                      sortDir={sortField === 'lopHocPhan' ? sortDir : null}
+                      onSort={(dir) => setSort('lopHocPhan', dir)}
+                      sortLabels={['A → Z', 'Z → A']}
+                    />
+                  </div>
                 </th>
-                <th className="w-24 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                  Loại hình
+                <th className="w-40 border-b border-r border-gray-200 px-3 py-2 text-left">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-sm font-semibold text-gray-600">Loại hình</span>
+                    <ExcelColumnFilter
+                      options={optionsLoaiHinh}
+                      selected={filterLoaiHinh}
+                      onChange={(s) => {
+                        setFilterLoaiHinh(s);
+                        setPage(1);
+                      }}
+                      sortDir={sortField === 'loaiHinh' ? sortDir : null}
+                      onSort={(dir) => setSort('loaiHinh', dir)}
+                      sortLabels={['A → Z', 'Z → A']}
+                    />
+                  </div>
                 </th>
-                <th className="w-16 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                  TC
+                <th className="w-20 border-b border-r border-gray-200 px-3 py-2 text-left">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-sm font-semibold text-gray-600">TC</span>
+                    <ExcelColumnFilter
+                      options={optionsSoTinChi}
+                      selected={filterSoTinChi}
+                      onChange={(s) => {
+                        setFilterSoTinChi(s);
+                        setPage(1);
+                      }}
+                      sortDir={sortField === 'soTinChi' ? sortDir : null}
+                      onSort={(dir) => setSort('soTinChi', dir)}
+                      sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                    />
+                  </div>
                 </th>
-                <th className="w-64 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                <th className="w-72 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                   Thời gian & Địa điểm
                 </th>
-                <th className="w-44 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                  Giảng viên
+                <th className="w-52 border-b border-r border-gray-200 px-3 py-2 text-left">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-sm font-semibold text-gray-600">Giảng viên</span>
+                    <ExcelColumnFilter
+                      options={optionsGiangVien}
+                      selected={filterGiangVien}
+                      onChange={(s) => {
+                        setFilterGiangVien(s);
+                        setPage(1);
+                      }}
+                      sortDir={sortField === 'giangVien' ? sortDir : null}
+                      onSort={(dir) => setSort('giangVien', dir)}
+                      sortLabels={['A → Z', 'Z → A']}
+                    />
+                  </div>
                 </th>
-                <th className="w-24 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+                <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                   Sĩ số
                 </th>
                 <th className="w-40 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
@@ -421,7 +521,7 @@ export default function LopHocTrongKyPage() {
                       <td className="border-r border-gray-200 px-3 py-2 text-sm font-medium text-gray-900">
                         {item.tenMonHoc} ({item.tenLop})
                       </td>
-                      <td className="w-24 border-r border-gray-200 px-3 py-2 text-sm">
+                      <td className="w-20 border-r border-gray-200 px-3 py-2 text-sm">
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                             item.loaiHinh === 'Lý thuyết'
@@ -432,10 +532,10 @@ export default function LopHocTrongKyPage() {
                           {item.loaiHinh}
                         </span>
                       </td>
-                      <td className="w-16 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
+                      <td className="w-20 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                         {item.soTinChi}
                       </td>
-                      <td className="w-64 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
+                      <td className="w-72 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                         {item.lichHocs.map((l) => (
                           <div key={l.maLich} className="mb-1.5 last:mb-0">
                             <div className="text-xs text-gray-400">
@@ -453,10 +553,10 @@ export default function LopHocTrongKyPage() {
                           </div>
                         ))}
                       </td>
-                      <td className="w-44 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
+                      <td className="w-52 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                         {item.tenGiangVien ?? <span className="text-gray-400">-</span>}
                       </td>
-                      <td className="w-24 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
+                      <td className="w-28 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                         <span className="text-blue-600">{item.soLuongDaDangKy}</span>/{item.siSoToiDa}
                       </td>
                       <td className="w-40 px-3 py-2">

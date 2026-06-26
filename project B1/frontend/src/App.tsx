@@ -9,6 +9,7 @@ import KhungChuongTrinh from './pages/admin/KhungChuongTrinh/KhungChuongTrinh';
 import KhungChuongTrinhDetail from './pages/admin/KhungChuongTrinh/KhungChuongTrinhDetail';
 import GiangVien from './pages/admin/GiangVien/GiangVien';
 import SinhVien from './pages/admin/SinhVien/SinhVien';
+import TaiKhoan from './pages/admin/TaiKhoan/TaiKhoan';
 import NamHoc from './pages/admin/HocVu/NamHoc';
 import KhoaHocNganh from './pages/admin/HocVu/KhoaHocNganh';
 import LopHocTrongKy from './pages/admin/HocVu/LopHocTrongKy';
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="danh-muc/khung-chuong-trinh/:id" element={<KhungChuongTrinhDetail />} />
         <Route path="nguoi-dung/giang-vien" element={<GiangVien />} />
         <Route path="nguoi-dung/sinh-vien" element={<SinhVien />} />
+        <Route path="nguoi-dung/tai-khoan" element={<TaiKhoan />} />
         <Route path="hoc-vu/nam-hoc" element={<NamHoc />} />
         <Route path="hoc-vu/khoa-hoc-nganh" element={<KhoaHocNganh />} />
         <Route path="hoc-vu/lop-hoc-ky" element={<LopHocTrongKy />} />
