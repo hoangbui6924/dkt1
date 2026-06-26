@@ -126,6 +126,22 @@ export default function StudentDangKyPage() {
 
   const tongTinChi = daDangKy.reduce((s, l) => s + l.soTinChi, 0);
 
+  const loaiMonHocMap = useMemo(() => {
+    const map = new Map<number, string>();
+    chuongTrinh?.monHocs.forEach((m) => map.set(m.maMonHoc, m.loaiMonHoc));
+    return map;
+  }, [chuongTrinh]);
+
+  const daDangKySapXep = useMemo(
+    () =>
+      [...daDangKy].sort((a, b) => {
+        const aTuChon = Number(loaiMonHocMap.get(a.maMonHoc) === 'Tự chọn');
+        const bTuChon = Number(loaiMonHocMap.get(b.maMonHoc) === 'Tự chọn');
+        return aTuChon - bTuChon;
+      }),
+    [daDangKy, loaiMonHocMap],
+  );
+
   const monHienThi = useMemo(() => {
     if (!chuongTrinh) return [];
     if (hienThiToanBo) return chuongTrinh.monHocs;
@@ -145,6 +161,10 @@ export default function StudentDangKyPage() {
       list.push(m);
       map.set(m.kyHoc, list);
     });
+    // Môn bắt buộc xếp lên trên, môn tự chọn xuống dưới trong từng học kỳ.
+    for (const list of map.values()) {
+      list.sort((a, b) => Number(a.loaiMonHoc === 'Tự chọn') - Number(b.loaiMonHoc === 'Tự chọn'));
+    }
     return new Map([...map.entries()].sort((a, b) => a[0] - b[0]));
   }, [monHienThi]);
 
@@ -378,9 +398,13 @@ export default function StudentDangKyPage() {
                   </td>
                 </tr>
               )}
-              {daDangKy.map((l) => (
+              {daDangKySapXep.map((l) => (
                 <tr key={l.maDangKy} className="hover:bg-gray-50/60">
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td
+                    className={`px-4 py-3 font-medium ${
+                      loaiMonHocMap.get(l.maMonHoc) === 'Tự chọn' ? 'text-amber-600' : 'text-gray-900'
+                    }`}
+                  >
                     {l.tenMonHoc} ({l.tenLop})
                     <span className="ml-1.5 text-sm text-gray-400">· {l.loaiHinh}</span>
                   </td>
@@ -478,12 +502,12 @@ export default function StudentDangKyPage() {
                   <tbody className="divide-y divide-gray-100">
                     {mons.map((m) => (
                       <tr key={m.maMonHoc} className="hover:bg-gray-50/60">
-                        <td className="w-20 px-3 py-2.5 align-middle text-blue-600">{m.maMonHoc}</td>
-                        <td className="px-3 py-2.5 align-middle font-medium text-gray-900">
+                        <td
+                          className={`px-3 py-2.5 align-middle font-medium ${
+                            m.loaiMonHoc === 'Tự chọn' ? 'text-amber-600' : 'text-gray-900'
+                          }`}
+                        >
                           {m.tenMonHoc}
-                          {m.loaiMonHoc === 'Tự chọn' && (
-                            <span className="ml-1.5 text-sm text-amber-600">(Tự chọn)</span>
-                          )}
                         </td>
                         <td className="w-12 px-3 py-2.5 text-center align-middle text-gray-700">{m.soTinChi}</td>
                         <td className="w-48 px-3 py-2.5 align-middle">{badgeTrangThai(m)}</td>

@@ -248,7 +248,7 @@ export default function BoMonPage() {
                   />
                 </div>
               </th>
-              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+              <th className="w-70 border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Khoa viện</span>
                   <ExcelColumnFilter
@@ -280,7 +280,7 @@ export default function BoMonPage() {
                   />
                 </div>
               </th>
-              <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left">
+              <th className="w-40 border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Số giảng viên</span>
                   <ExcelColumnFilter
