@@ -27,6 +27,7 @@ builder.Services.AddScoped<IGoiYLichService, GoiYLichService>();
 builder.Services.Configure<NvidiaAiSettings>(builder.Configuration.GetSection("NvidiaAi"));
 builder.Services.AddHttpClient<IAiChatService, NvidiaAiChatService>();
 builder.Services.AddHttpClient<IEmbeddingService, NvidiaEmbeddingService>();
+builder.Services.AddHttpClient<IWebSearchService, WebSearchService>();
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? new JwtSettings();
 

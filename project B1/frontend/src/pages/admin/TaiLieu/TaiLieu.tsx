@@ -13,7 +13,7 @@ import {
 import { type MonHoc, getMonHocs } from '../../../services/monHocService';
 import SearchableSelect from '../../../components/SearchableSelect';
 
-const LOAI_OPTIONS: LoaiTaiLieu[] = ['NoiQuy', 'SoTay', 'GiaoTrinh'];
+const LOAI_OPTIONS: LoaiTaiLieu[] = ['SoTay', 'GiaoTrinh'];
 
 function formatThoiGian(iso: string): string {
   const d = new Date(iso);

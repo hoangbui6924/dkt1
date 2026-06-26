@@ -36,18 +36,21 @@ public class ChatbotController : ControllerBase
     private readonly IAiChatService _aiChat;
     private readonly IMemoryCache _cache;
     private readonly IGoiYLichService _goiYLich;
+    private readonly IWebSearchService _webSearch;
 
     public ChatbotController(AppDbContext db, IEmbeddingService embedding, IAiChatService aiChat,
-        IMemoryCache cache, IGoiYLichService goiYLich)
+        IMemoryCache cache, IGoiYLichService goiYLich, IWebSearchService webSearch)
     {
         _db = db;
         _embedding = embedding;
         _aiChat = aiChat;
         _cache = cache;
         _goiYLich = goiYLich;
+        _webSearch = webSearch;
     }
 
-    // Công cụ (tool) cho LLM gọi — agentic. Hiện có 1: gợi ý thời khoá biểu (read-only, không tự đăng ký).
+    // Công cụ (tool) cho LLM gọi — agentic, READ-ONLY: 3 tool học vụ (xếp lịch / đã đăng ký / chương trình)
+    // + 1 tool tìm web cho thông tin ngoài hệ thống.
     private static readonly IReadOnlyList<ChatTool> CongCu = new List<ChatTool>
     {
         new ChatTool(
@@ -78,6 +81,17 @@ public class ChatbotController : ControllerBase
             "Tra cứu CHƯƠNG TRÌNH HỌC + TIẾN ĐỘ của chính sinh viên: môn ĐÃ ĐẠT, môn CÓ THỂ đăng ký kỳ này, môn còn lại. " +
             "Dùng khi hỏi 'mình đã học/đạt môn gì', 'kỳ này được/cần học gì', 'còn môn nào phải học'. KHÔNG xếp lịch.",
             new { type = "object", properties = new { } }),
+        new ChatTool(
+            "tim_kiem_web",
+            "Tìm thông tin trên Internet khi câu hỏi (ĐÚNG phạm vi học tập/nghề nghiệp) cần dữ liệu BÊN NGOÀI hệ thống nhà trường " +
+            "mà tài liệu + dữ liệu hệ thống không có: cơ hội nghề nghiệp/mức lương ngành, xu hướng công nghệ, khái niệm chuyên ngành, " +
+            "tuyển dụng/chứng chỉ, kiến thức cập nhật... TUYỆT ĐỐI không dùng cho câu ngoài phạm vi (giải trí, cờ bạc, chính trị...).",
+            new
+            {
+                type = "object",
+                properties = new { query = new { type = "string", description = "Từ khoá/truy vấn tìm kiếm, ngắn gọn rõ ràng." } },
+                required = new[] { "query" },
+            }),
     };
 
     private static string ChuanHoa(string? s)
@@ -276,6 +290,9 @@ public class ChatbotController : ControllerBase
     // Bộ điều phối tool (registry nhỏ): resolve sinh viên 1 lần rồi gọi đúng executor. Tất cả READ-ONLY, in-process.
     private async Task<string> ChayCongCuAsync(string ten, string thamSoJson)
     {
+        // Tìm web không cần danh tính sinh viên.
+        if (ten == "tim_kiem_web") return await ToolTimKiemWebAsync(thamSoJson);
+
         var sv = await ResolveSinhVienAsync();
         if (sv is null) return "Không xác định được sinh viên đang đăng nhập.";
         return ten switch
@@ -285,6 +302,23 @@ public class ChatbotController : ControllerBase
             "xem_chuong_trinh_ky_nay" => await ToolChuongTrinhKyNayAsync(sv),
             _ => "Công cụ không được hỗ trợ.",
         };
+    }
+
+    // Tool 4: tìm kiếm web (thông tin ngoài hệ thống) — tái dùng WebSearchService (DuckDuckGo -> Wikipedia VI, không cần key).
+    private async Task<string> ToolTimKiemWebAsync(string thamSoJson)
+    {
+        string query;
+        try
+        {
+            using var doc = JsonDocument.Parse(thamSoJson);
+            query = doc.RootElement.TryGetProperty("query", out var q) && q.ValueKind == JsonValueKind.String
+                ? (q.GetString() ?? "") : "";
+        }
+        catch (JsonException) { query = ""; }
+        if (string.IsNullOrWhiteSpace(query)) return "Không có từ khoá tìm kiếm.";
+
+        var kq = await _webSearch.SearchAsync(query, HttpContext.RequestAborted);
+        return string.IsNullOrWhiteSpace(kq) ? "Không tìm thấy kết quả web phù hợp." : "Kết quả tìm kiếm web:\n" + kq;
     }
 
     private async Task<SinhVien?> ResolveSinhVienAsync()
@@ -515,7 +549,8 @@ public class ChatbotController : ControllerBase
             "Phong cách: gần gũi, tự nhiên, ấm áp như một anh/chị khoá trên; xưng \"mình\" và gọi người hỏi là \"bạn\"; có thể dùng emoji nhẹ nhàng.\n\n" +
             "Bạn có các nguồn thông tin: (1) NGỮ CẢNH TÀI LIỆU trích từ nội quy/sổ tay/giáo trình; " +
             "(2) DỮ LIỆU HỆ THỐNG gồm CƠ CẤU TỔ CHỨC (khoa/viện, bộ môn, ngành đào tạo) và DỮ LIỆU MÔN HỌC (giảng viên giảng dạy, độ khó môn học thống kê từ điểm khoá trước); " +
-            "(3) kiến thức chung về học tập, ngành nghề, kỹ năng cho sinh viên.\n\n" +
+            "(3) kiến thức chung về học tập, ngành nghề, kỹ năng cho sinh viên; " +
+            "(4) công cụ tìm web tim_kiem_web cho thông tin BÊN NGOÀI / cập nhật khi 3 nguồn trên không đủ.\n\n" +
             "QUY TẮC QUAN TRỌNG NHẤT về cách trả lời:\n" +
             "- NGẮN GỌN và ĐÚNG TRỌNG TÂM. Trả lời thẳng vào đúng điều được hỏi, KHÔNG thêm thông tin/lời khuyên không được hỏi.\n" +
             "- Độ dài tương xứng câu hỏi: câu hỏi tra cứu đơn giản (vd \"khoa X có bộ môn nào\", \"môn Y mấy tín chỉ\") chỉ trả lời gọn trong 1-3 câu hoặc một danh sách ngắn. KHÔNG dùng bảng biểu dài dòng, KHÔNG kể lể lan man.\n" +
@@ -529,5 +564,6 @@ public class ChatbotController : ControllerBase
             "- Tư vấn chọn giảng viên/độ khó: dựa vào điểm trung bình & tỉ lệ đạt, nói gọn lý do, nhắc đây là số liệu tham khảo từ khoá trước.\n" +
             "- XẾP LỊCH HỌC: Bạn CÓ công cụ goi_y_lich_hoc để GỢI Ý thời khoá biểu cho chính bạn sinh viên đang hỏi. Khi bạn ấy nhờ xếp/gợi ý lịch học, đăng ký môn kỳ này — ĐỪNG từ chối hay đẩy sang phòng Đào tạo — hãy GỌI công cụ đó, truyền lại yêu cầu kèm ràng buộc (tránh thứ/buổi/tiết, ưu tiên/tránh giảng viên...). Khi có kết quả, BẮT BUỘC LIỆT KÊ CHI TIẾT ít nhất 1 phương án đầy đủ — mỗi môn một dòng theo dạng: \"• Tên môn — lớp — GV — Thứ X tiết Y-Z\". (Đây là ngoại lệ của quy tắc ngắn gọn: phải cho sinh viên XEM được lịch, đừng chỉ tóm tắt suông.) Sau đó nói rõ đây là GỢI Ý tham khảo và bạn ấy TỰ đăng ký trên hệ thống (bạn KHÔNG tự đăng ký giúp), nhắc còn phương án khác và hỏi có muốn chỉnh ràng buộc không.\n" +
             "- DỮ LIỆU HỌC VỤ CỦA CHÍNH SINH VIÊN: Hệ thống ĐÃ BIẾT sinh viên nào đang đăng nhập (qua phiên đăng nhập) — TUYỆT ĐỐI KHÔNG hỏi mã sinh viên / họ tên / năm học; các công cụ tự biết là ai. Khi bạn ấy hỏi về tình trạng học tập của bản thân (đã đăng ký gì, đã đạt/đã học môn nào, kỳ này được/cần học gì, còn môn nào), PHẢI GỌI NGAY đúng công cụ để lấy số liệu THẬT, không hỏi ngược, không bịa: 'đã đăng ký lớp/lịch của mình' → xem_lich_da_dang_ky; 'đã đạt/đã học/được học/còn môn nào phải học' → xem_chuong_trinh_ky_nay. Trình bày kết quả gọn, rõ.\n" +
-            "- Chỉ trao đổi trong phạm vi học tập, môn học, ngành nghề và đời sống sinh viên/nhà trường. Câu hỏi ngoài phạm vi (chính trị nhạy cảm, nội dung không phù hợp, chuyện phiếm...) thì từ chối nhẹ nhàng và mời quay lại chủ đề học tập.";
+            "- TÌM WEB: khi câu hỏi ĐÚNG phạm vi (nghề nghiệp, công nghệ, khái niệm chuyên ngành, chứng chỉ...) cần thông tin BÊN NGOÀI mà tài liệu/dữ liệu hệ thống không có và bạn không chắc, hãy GỌI tim_kiem_web; có kết quả thì tổng hợp lại NGẮN GỌN bằng lời của bạn (có thể nói 'theo thông tin trên mạng'), đừng dán thô. KHÔNG tìm web cho câu đã trả lời được từ tài liệu/hệ thống.\n" +
+            "- Chỉ trao đổi trong phạm vi học tập, môn học, ngành nghề và đời sống sinh viên/nhà trường. Câu hỏi ngoài phạm vi (chính trị nhạy cảm, nội dung không phù hợp, chuyện phiếm...) thì từ chối nhẹ nhàng và mời quay lại chủ đề học tập — và TUYỆT ĐỐI KHÔNG gọi tim_kiem_web cho những câu này.";
 }
