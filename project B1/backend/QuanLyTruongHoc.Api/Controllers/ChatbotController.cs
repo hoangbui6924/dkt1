@@ -1,12 +1,16 @@
 using System.Globalization;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using QuanLyTruongHoc.Application.Common;
+using QuanLyTruongHoc.Application.DTOs.DangKyHocPhan;
 using QuanLyTruongHoc.Application.DTOs.TaiLieu;
 using QuanLyTruongHoc.Application.Interfaces;
+using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
 namespace QuanLyTruongHoc.Api.Controllers;
@@ -21,18 +25,74 @@ public class ChatbotController : ControllerBase
     private const double NguongHienNguon = 0.46;  // điểm tối thiểu để hiển thị đoạn như "nguồn trích dẫn"
     private const decimal DiemDat = 4.0m;
 
+    // Cache dữ liệu DB dùng dựng ngữ cảnh (đổi hiếm) để khỏi quét lại mỗi câu hỏi.
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
+    private const string CacheKeyCoCau = "chatbot:cocau";
+    private const string CacheKeyDuLieuMon = "chatbot:dulieumon";
+    private const string CacheKeyChunks = "chatbot:chunks";
+
     private readonly AppDbContext _db;
     private readonly IEmbeddingService _embedding;
     private readonly IAiChatService _aiChat;
+    private readonly IMemoryCache _cache;
+    private readonly IGoiYLichService _goiYLich;
     private readonly IWebSearchService _webSearch;
 
-    public ChatbotController(AppDbContext db, IEmbeddingService embedding, IAiChatService aiChat, IWebSearchService webSearch)
+    public ChatbotController(AppDbContext db, IEmbeddingService embedding, IAiChatService aiChat,
+        IMemoryCache cache, IGoiYLichService goiYLich, IWebSearchService webSearch)
     {
         _db = db;
         _embedding = embedding;
         _aiChat = aiChat;
+        _cache = cache;
+        _goiYLich = goiYLich;
         _webSearch = webSearch;
     }
+
+    // Công cụ (tool) cho LLM gọi — agentic, READ-ONLY: 3 tool học vụ (xếp lịch / đã đăng ký / chương trình)
+    // + 1 tool tìm web cho thông tin ngoài hệ thống.
+    private static readonly IReadOnlyList<ChatTool> CongCu = new List<ChatTool>
+    {
+        new ChatTool(
+            "goi_y_lich_hoc",
+            "XẾP/SẮP thời khoá biểu (vài phương án chọn LỚP cụ thể, không trùng giờ) cho CHÍNH sinh viên đang đăng nhập, " +
+            "dựa trên yêu cầu tự nhiên (tránh thứ/buổi/tiết, ưu tiên hoặc tránh giảng viên, môn tự chọn...). " +
+            "Chỉ GỢI Ý tham khảo, KHÔNG tự đăng ký giúp. (Chỉ để XẾP LỊCH — muốn liệt kê môn cần học thì dùng xem_chuong_trinh_ky_nay.)",
+            new
+            {
+                type = "object",
+                properties = new
+                {
+                    yeu_cau = new
+                    {
+                        type = "string",
+                        description = "Yêu cầu xếp lịch bằng tiếng Việt, nêu rõ ràng buộc nếu có (vd: 'ưu tiên buổi sáng, tránh thứ 7, tránh thầy A').",
+                    },
+                },
+                required = new[] { "yeu_cau" },
+            }),
+        new ChatTool(
+            "xem_lich_da_dang_ky",
+            "Xem các lớp học phần mà CHÍNH sinh viên đang đăng nhập ĐÃ ĐĂNG KÝ trong học kỳ hiện tại " +
+            "(môn, lớp, giảng viên, lịch buổi). Dùng khi sinh viên hỏi 'mình đã đăng ký môn gì', 'lịch học của mình', 'thời khoá biểu hiện tại'.",
+            new { type = "object", properties = new { } }),
+        new ChatTool(
+            "xem_chuong_trinh_ky_nay",
+            "Tra cứu CHƯƠNG TRÌNH HỌC + TIẾN ĐỘ của chính sinh viên: môn ĐÃ ĐẠT, môn CÓ THỂ đăng ký kỳ này, môn còn lại. " +
+            "Dùng khi hỏi 'mình đã học/đạt môn gì', 'kỳ này được/cần học gì', 'còn môn nào phải học'. KHÔNG xếp lịch.",
+            new { type = "object", properties = new { } }),
+        new ChatTool(
+            "tim_kiem_web",
+            "Tìm thông tin trên Internet khi câu hỏi (ĐÚNG phạm vi học tập/nghề nghiệp) cần dữ liệu BÊN NGOÀI hệ thống nhà trường " +
+            "mà tài liệu + dữ liệu hệ thống không có: cơ hội nghề nghiệp/mức lương ngành, xu hướng công nghệ, khái niệm chuyên ngành, " +
+            "tuyển dụng/chứng chỉ, kiến thức cập nhật... TUYỆT ĐỐI không dùng cho câu ngoài phạm vi (giải trí, cờ bạc, chính trị...).",
+            new
+            {
+                type = "object",
+                properties = new { query = new { type = "string", description = "Từ khoá/truy vấn tìm kiếm, ngắn gọn rõ ràng." } },
+                required = new[] { "query" },
+            }),
+    };
 
     private static string ChuanHoa(string? s)
     {
@@ -43,6 +103,34 @@ public class ChatbotController : ControllerBase
             if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
                 sb.Append(c);
         return sb.ToString().Replace('đ', 'd');
+    }
+
+    // Đoạn tài liệu đã NẠP SẴN cho tra cứu: vector embedding đã parse + text đã chuẩn hoá (bỏ dấu).
+    // ponytail: cache trong RAM để khỏi load ~8MB embedding + parse 648×1024 float mỗi query.
+    // Trần: cosine in-memory trên toàn bộ chunk; nếu chunk tăng cỡ 10K+ thì chuyển pgvector (ANN).
+    private sealed record ChunkVec(
+        int MaTaiLieu, string TenFile, int Trang, string LoaiTaiLieu, int? MaMonHocParent,
+        string NoiDung, string NoiDungNorm, float[] Vector);
+
+    private async Task<List<ChunkVec>> LoadChunkVecsAsync()
+    {
+        var raw = await _db.TaiLieuChunks
+            .Where(c => c.TaiLieu!.TrangThai == "DaXuLy")
+            .Select(c => new
+            {
+                c.MaTaiLieu,
+                c.TaiLieu!.TenFile,
+                c.Trang,
+                c.TaiLieu.LoaiTaiLieu,
+                MaMonHocParent = c.TaiLieu.MaMonHoc,
+                c.NoiDung,
+                c.Embedding,
+            })
+            .ToListAsync();
+
+        return raw.Select(c => new ChunkVec(
+            c.MaTaiLieu, c.TenFile, c.Trang, c.LoaiTaiLieu, c.MaMonHocParent,
+            c.NoiDung, ChuanHoa(c.NoiDung), VectorMath.Parse(c.Embedding))).ToList();
     }
 
     // Cơ cấu tổ chức: khoa/viện -> bộ môn + ngành đào tạo
@@ -140,41 +228,259 @@ public class ChatbotController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.CauHoi))
             return BadRequest(new { message = "Vui lòng nhập câu hỏi" });
 
+        List<ChatTurn> messages;
+        List<NguonUngVien> ungVien;
+        try { (messages, ungVien) = await ChuanBiHoiThoaiAsync(request); }
+        catch (Exception ex) { return StatusCode(502, new { message = "Không thể kết nối dịch vụ AI: " + ex.Message }); }
+
+        var sb = new StringBuilder();
+        try
+        {
+            await foreach (var t in _aiChat.ChatStreamAsync(SystemPrompt, messages, CongCu, ChayCongCuAsync, HttpContext.RequestAborted))
+                sb.Append(t);
+        }
+        catch (Exception ex) { return StatusCode(502, new { message = "Không thể kết nối dịch vụ AI: " + ex.Message }); }
+
+        var traLoi = sb.ToString();
+        return Ok(new ChatbotResponse(traLoi.TrimEnd(), CiteGrounded(traLoi, ungVien)));
+    }
+
+    // Streaming SSE: phát từng mảnh trả lời ngay khi LLM sinh -> độ trễ cảm nhận ~1s thay vì chờ trọn ~20s.
+    [HttpPost("hoi-stream")]
+    public async Task HoiStream(ChatbotRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.CauHoi))
+        {
+            Response.StatusCode = 400;
+            await Response.WriteAsJsonAsync(new { message = "Vui lòng nhập câu hỏi" }, ct);
+            return;
+        }
+
+        List<ChatTurn> messages;
+        List<NguonUngVien> ungVien;
+        try { (messages, ungVien) = await ChuanBiHoiThoaiAsync(request); }
+        catch (Exception ex)
+        {
+            Response.StatusCode = 502;
+            await Response.WriteAsJsonAsync(new { message = "Không thể kết nối dịch vụ AI: " + ex.Message }, ct);
+            return;
+        }
+
+        Response.Headers.ContentType = "text/event-stream";
+        Response.Headers.CacheControl = "no-cache";
+        Response.Headers["X-Accel-Buffering"] = "no"; // chặn proxy buffer luồng SSE
+
+        var full = new StringBuilder();
+        await foreach (var token in _aiChat.ChatStreamAsync(SystemPrompt, messages, CongCu, ChayCongCuAsync, ct))
+        {
+            full.Append(token);
+            await WriteSseAsync(new { delta = token }, ct);
+        }
+
+        // Cite sau khi có trọn câu trả lời: chỉ nguồn ứng viên có nội dung THỰC SỰ xuất hiện trong câu trả lời.
+        await WriteSseAsync(new { done = true, nguon = CiteGrounded(full.ToString(), ungVien) }, ct);
+    }
+
+    private async Task WriteSseAsync(object payload, CancellationToken ct)
+    {
+        await Response.WriteAsync($"data: {JsonSerializer.Serialize(payload)}\n\n", ct);
+        await Response.Body.FlushAsync(ct);
+    }
+
+    // Bộ điều phối tool (registry nhỏ): resolve sinh viên 1 lần rồi gọi đúng executor. Tất cả READ-ONLY, in-process.
+    private async Task<string> ChayCongCuAsync(string ten, string thamSoJson)
+    {
+        // Tìm web không cần danh tính sinh viên.
+        if (ten == "tim_kiem_web") return await ToolTimKiemWebAsync(thamSoJson);
+
+        var sv = await ResolveSinhVienAsync();
+        if (sv is null) return "Không xác định được sinh viên đang đăng nhập.";
+        return ten switch
+        {
+            "goi_y_lich_hoc" => await ToolXepLichAsync(sv, thamSoJson),
+            "xem_lich_da_dang_ky" => await ToolLichDaDangKyAsync(sv),
+            "xem_chuong_trinh_ky_nay" => await ToolChuongTrinhKyNayAsync(sv),
+            _ => "Công cụ không được hỗ trợ.",
+        };
+    }
+
+    // Tool 4: tìm kiếm web (thông tin ngoài hệ thống) — tái dùng WebSearchService (DuckDuckGo -> Wikipedia VI, không cần key).
+    private async Task<string> ToolTimKiemWebAsync(string thamSoJson)
+    {
+        string query;
+        try
+        {
+            using var doc = JsonDocument.Parse(thamSoJson);
+            query = doc.RootElement.TryGetProperty("query", out var q) && q.ValueKind == JsonValueKind.String
+                ? (q.GetString() ?? "") : "";
+        }
+        catch (JsonException) { query = ""; }
+        if (string.IsNullOrWhiteSpace(query)) return "Không có từ khoá tìm kiếm.";
+
+        var kq = await _webSearch.SearchAsync(query, HttpContext.RequestAborted);
+        return string.IsNullOrWhiteSpace(kq) ? "Không tìm thấy kết quả web phù hợp." : "Kết quả tìm kiếm web:\n" + kq;
+    }
+
+    private async Task<SinhVien?> ResolveSinhVienAsync()
+    {
+        var maTaiKhoanClaim = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        if (!int.TryParse(maTaiKhoanClaim, out var maTaiKhoan)) return null;
+        return await _db.SinhViens
+            .Include(s => s.KhoaHocNganh).ThenInclude(k => k!.NganhHoc)
+            .FirstOrDefaultAsync(s => s.MaTaiKhoan == maTaiKhoan);
+    }
+
+    // Tool 1: gợi ý thời khoá biểu (gọi GoiYLichService — cùng logic trang đăng ký, không tự đăng ký).
+    private async Task<string> ToolXepLichAsync(SinhVien sv, string thamSoJson)
+    {
+        string yeuCau;
+        try
+        {
+            using var doc = JsonDocument.Parse(thamSoJson);
+            yeuCau = doc.RootElement.TryGetProperty("yeu_cau", out var yc) && yc.ValueKind == JsonValueKind.String
+                ? (yc.GetString() ?? "") : "";
+        }
+        catch (JsonException) { yeuCau = ""; }
+        if (string.IsNullOrWhiteSpace(yeuCau)) yeuCau = "Xếp giúp tôi thời khoá biểu kỳ này.";
+        return TomTatLich(await _goiYLich.GoiYAsync(sv, yeuCau));
+    }
+
+    // Tool 2: các lớp sinh viên ĐÃ đăng ký trong học kỳ hiện tại.
+    private async Task<string> ToolLichDaDangKyAsync(SinhVien sv)
+    {
+        var hocKy = await _goiYLich.ResolveHocKyHienTaiAsync(sv);
+        if (hocKy is null) return "Hiện chưa có học kỳ nào để xem lịch.";
+        var dangKys = await _db.DangKyLopHocs
+            .Where(d => d.MaSinhVien == sv.MaSinhVien && d.LopHocTrongKy!.MaHocKy == hocKy.MaHocKy)
+            .Include(d => d.LopHocTrongKy).ThenInclude(l => l!.MonHoc)
+            .Include(d => d.LopHocTrongKy).ThenInclude(l => l!.LichHocs)
+            .Include(d => d.LopHocTrongKy).ThenInclude(l => l!.LopHocKyGiangViens).ThenInclude(g => g.GiangVien)
+            .ToListAsync();
+        if (dangKys.Count == 0)
+            return $"Học kỳ {hocKy.TenHocKy}: bạn CHƯA đăng ký lớp học phần nào.";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Lịch đã đăng ký học kỳ {hocKy.TenHocKy} ({dangKys.Count} lớp):");
+        foreach (var d in dangKys)
+        {
+            var l = d.LopHocTrongKy!;
+            var gv = l.LopHocKyGiangViens.FirstOrDefault()?.GiangVien?.HoTen;
+            var buoi = string.Join("; ", l.LichHocs.OrderBy(x => x.Thu).ThenBy(x => x.TietBatDau)
+                .Select(x => $"Thứ {x.Thu} tiết {x.TietBatDau}-{x.TietKetThuc}" + (x.PhongHoc != null ? $" P.{x.PhongHoc}" : "")));
+            sb.AppendLine($"- {l.MonHoc?.TenMonHoc} (lớp {l.TenLop}, {l.MonHoc?.SoTinChi} TC, GV {gv}): {buoi}");
+        }
+        return sb.ToString();
+    }
+
+    // Tool 3: các môn CÓ THỂ đăng ký trong chương trình ở học kỳ hiện tại.
+    private async Task<string> ToolChuongTrinhKyNayAsync(SinhVien sv)
+    {
+        var hocKy = await _goiYLich.ResolveHocKyHienTaiAsync(sv);
+        if (hocKy is null) return "Hiện chưa có học kỳ nào.";
+        var ct = await _goiYLich.BuildChuongTrinhAsync(sv, hocKy);
+        var daDat = ct.MonHocs.Where(m => m.TrangThai == "DaDat").Select(m => m.TenMonHoc).ToList();
+        var coTheDk = ct.MonHocs.Where(m => m.CoTheDangKy).ToList();
+        var conLai = ct.MonHocs.Count(m => m.TrangThai != "DaDat" && !m.CoTheDangKy && !m.DaDangKyKyNay);
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Chương trình học của bạn — học kỳ {hocKy.TenHocKy} (năm thứ {ct.NamThu}):");
+        sb.AppendLine($"- Đã đạt: {daDat.Count} môn"
+            + (daDat.Count > 0 ? $" ({string.Join(", ", daDat.Take(20))}{(daDat.Count > 20 ? ", ..." : "")})" : ""));
+        if (coTheDk.Count > 0)
+        {
+            sb.AppendLine($"- CÓ THỂ đăng ký kỳ này ({coTheDk.Count} môn):");
+            foreach (var m in coTheDk)
+                sb.AppendLine($"  • {m.TenMonHoc} ({m.SoTinChi} TC, {m.LoaiMonHoc}, kỳ {m.KyHoc}){(m.CaiThien ? " [học cải thiện]" : "")}");
+        }
+        else sb.AppendLine("- Hiện không có môn nào đủ điều kiện đăng ký kỳ này.");
+        if (conLai > 0) sb.AppendLine($"- Còn {conLai} môn khác chưa tới kỳ / chưa đủ điều kiện.");
+        return sb.ToString();
+    }
+
+    // Tóm tắt kết quả xếp lịch thành text gọn cho LLM trình bày (≤3 phương án để tiết kiệm token).
+    private static string TomTatLich(List<GoiYThoiKhoaBieuResultDto>? ds)
+    {
+        if (ds == null || ds.Count == 0)
+            return "Hiện chưa xếp được phương án nào (có thể chưa tới đợt đăng ký, hoặc không có lớp mở phù hợp).";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Đã xếp được {ds.Count} phương án thời khoá biểu (GỢI Ý tham khảo, sinh viên TỰ đăng ký):");
+        var stt = 1;
+        foreach (var pa in ds.Take(2))
+        {
+            sb.AppendLine($"== Phương án {stt} ==");
+            foreach (var m in pa.MonHocs)
+            {
+                var buoi = string.Join("; ", m.BuoiHocs.Select(b => $"Thứ {b.Thu} tiết {b.TietBatDau}-{b.TietKetThuc}"));
+                sb.AppendLine($"- {m.TenMonHoc} (lớp {m.TenLop}, {m.SoTinChi} TC, GV {m.TenGiangVien}): {buoi}");
+            }
+            if (pa.MonKhongXepDuoc.Count > 0)
+                sb.AppendLine("  Chưa xếp được: " + string.Join(", ", pa.MonKhongXepDuoc.Select(x => $"{x.TenMonHoc} ({x.LyDo})")));
+            if (pa.GhiChu.Count > 0) sb.AppendLine("  Ghi chú: " + string.Join(" ", pa.GhiChu));
+            stt++;
+        }
+        if (ds.Count > 2) sb.AppendLine($"(Còn {ds.Count - 2} phương án khác, hỏi nếu muốn xem thêm.)");
+        return sb.ToString();
+    }
+
+    // Nguồn ứng viên: đoạn khớp ngữ nghĩa đủ tốt (≥ NguongHienNguon) + text đã chuẩn hoá để đối chiếu groundedness.
+    private sealed record NguonUngVien(NguonTraLoiDto Nguon, string NoiDungNorm);
+
+    private const int GroundingMinHits = 4; // số từ "đặc trưng" (≥5 ký tự) của đoạn phải xuất hiện trong câu trả lời
+
+    // Citation XÁC ĐỊNH (thay marker [[DUNG_TAILIEU]] flaky ~33%): chỉ cite đoạn mà nội dung THỰC SỰ
+    // được dùng trong câu trả lời (đủ từ đặc trưng trùng) -> tránh "nguồn ảo" khi trả lời từ DB/kiến thức chung.
+    private static List<NguonTraLoiDto> CiteGrounded(string traLoi, List<NguonUngVien> ungVien)
+    {
+        var na = ChuanHoa(traLoi);
+        var cited = new List<NguonTraLoiDto>();
+        foreach (var uv in ungVien)
+        {
+            var terms = uv.NoiDungNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 5).Distinct();
+            if (terms.Count(t => na.Contains(t)) >= GroundingMinHits)
+                cited.Add(uv.Nguon);
+        }
+        return cited.GroupBy(n => new { n.MaTaiLieu, n.Trang }).Select(g => g.First()).ToList();
+    }
+
+    // Chuẩn bị hội thoại dùng chung cho cả /hoi và /hoi-stream: retrieval hybrid + dữ liệu DB (cache)
+    // -> danh sách message gửi LLM + nguồn ỨNG VIÊN (chunk ≥ ngưỡng, kèm text để CiteGrounded đối chiếu).
+    // Ném exception nếu embedding lỗi (caller -> 502).
+    private async Task<(List<ChatTurn> messages, List<NguonUngVien> ungVien)> ChuanBiHoiThoaiAsync(ChatbotRequest request)
+    {
         var lichSu = request.LichSu ?? new List<ChatLichSuItem>();
 
         // Câu hỏi nối ngữ cảnh: ghép lượt hỏi trước của sinh viên để giải nghĩa đại từ ("nó", "môn đó"...) khi tra cứu.
         var luotHoiTruoc = lichSu.Where(h => h.VaiTro == "user").Select(h => h.NoiDung).LastOrDefault();
         var cauTraCuu = string.IsNullOrWhiteSpace(luotHoiTruoc) ? request.CauHoi : $"{luotHoiTruoc}. {request.CauHoi}";
 
-        // 1) Lấy các đoạn tài liệu ứng viên. Có chọn môn -> tập trung môn đó + nội quy/sổ tay; không chọn -> tìm trên toàn bộ.
-        var taiLieuQuery = _db.TaiLieus.Where(t => t.TrangThai == "DaXuLy");
-        if (request.MaMonHoc.HasValue)
-            taiLieuQuery = taiLieuQuery.Where(t =>
-                t.LoaiTaiLieu == "NoiQuy" || t.LoaiTaiLieu == "SoTay" ||
-                (t.LoaiTaiLieu == "GiaoTrinh" && t.MaMonHoc == request.MaMonHoc.Value));
-
-        var maTaiLieus = await taiLieuQuery.Select(t => t.MaTaiLieu).ToListAsync();
-        var chunks = maTaiLieus.Count == 0
-            ? new List<Domain.Entities.TaiLieuChunk>()
-            : await _db.TaiLieuChunks.Where(c => maTaiLieus.Contains(c.MaTaiLieu)).Include(c => c.TaiLieu).ToListAsync();
-
-        // 2) Tra cứu ngữ nghĩa + lexical (hybrid) để chọn đoạn liên quan nhất
-        var topChunks = new List<(Domain.Entities.TaiLieuChunk chunk, double score)>();
-        if (chunks.Count > 0)
+        // 1) Đoạn tài liệu ứng viên (nạp sẵn + cache 10 phút). Có chọn môn -> tập trung môn đó + nội quy/sổ tay; không thì toàn bộ.
+        var allChunks = await _cache.GetOrCreateAsync(CacheKeyChunks, e =>
         {
-            float[] qVec;
-            try { qVec = await _embedding.EmbedQueryAsync(cauTraCuu); }
-            catch (Exception ex) { return StatusCode(502, new { message = "Không thể kết nối dịch vụ AI: " + ex.Message }); }
+            e.AbsoluteExpirationRelativeToNow = CacheTtl;
+            return LoadChunkVecsAsync();
+        }) ?? new List<ChunkVec>();
 
+        var candidates = request.MaMonHoc.HasValue
+            ? allChunks.Where(c =>
+                c.LoaiTaiLieu == "NoiQuy" || c.LoaiTaiLieu == "SoTay" ||
+                (c.LoaiTaiLieu == "GiaoTrinh" && c.MaMonHocParent == request.MaMonHoc.Value)).ToList()
+            : allChunks;
+
+        // 2) Tra cứu ngữ nghĩa + lexical (hybrid) để chọn đoạn liên quan nhất — cosine in-memory (vector đã parse).
+        var topChunks = new List<(ChunkVec chunk, double score)>();
+        if (candidates.Count > 0)
+        {
+            var qVec = await _embedding.EmbedQueryAsync(cauTraCuu);
             var qTokens = ChuanHoa(cauTraCuu).Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Where(w => w.Length >= 3).Distinct().ToList();
 
-            topChunks = chunks
+            topChunks = candidates
                 .Select(c =>
                 {
-                    var cos = VectorMath.CosineSimilarity(qVec, VectorMath.Parse(c.Embedding));
-                    var norm = ChuanHoa(c.NoiDung);
-                    var overlap = qTokens.Count(t => norm.Contains(t));
+                    var cos = VectorMath.CosineSimilarity(qVec, c.Vector);
+                    var overlap = qTokens.Count(t => c.NoiDungNorm.Contains(t));
                     return (chunk: c, score: cos + overlap * 0.015); // cộng nhẹ điểm trùng từ khoá
                 })
                 .OrderByDescending(x => x.score)
@@ -183,25 +489,35 @@ public class ChatbotController : ControllerBase
                 .ToList();
         }
 
-        // 3) Dữ liệu từ DB: cơ cấu tổ chức + môn học
-        var coCau = await BuildCoCauToChucAsync();
-        var duLieuMon = await BuildDuLieuMonHocAsync();
+        // 3) Dữ liệu từ DB: cơ cấu tổ chức + môn học.
+        // Cache 10 phút: quét cả 68 môn + thống kê điểm khoá trước, dữ liệu đổi rất hiếm (admin sửa)
+        // -> không cần dựng lại mỗi câu hỏi. Giảm tải DB; phần chậm chính vẫn là LLM (~20s).
+        var coCau = await _cache.GetOrCreateAsync(CacheKeyCoCau, e =>
+        {
+            e.AbsoluteExpirationRelativeToNow = CacheTtl;
+            return BuildCoCauToChucAsync();
+        }) ?? "";
+        var duLieuMon = await _cache.GetOrCreateAsync(CacheKeyDuLieuMon, e =>
+        {
+            e.AbsoluteExpirationRelativeToNow = CacheTtl;
+            return BuildDuLieuMonHocAsync();
+        }) ?? "";
 
         // 4) Dựng ngữ cảnh + nguồn
         var ctx = new StringBuilder();
-        var nguon = new List<NguonTraLoiDto>();
+        var ungVien = new List<NguonUngVien>();
         if (topChunks.Count > 0)
         {
             ctx.AppendLine("=== NGỮ CẢNH TÀI LIỆU ===");
             var stt = 1;
             foreach (var (chunk, score) in topChunks)
             {
-                ctx.AppendLine($"[Đoạn {stt} — {chunk.TaiLieu!.TenFile}, trang {chunk.Trang}]");
+                ctx.AppendLine($"[Đoạn {stt} — {chunk.TenFile}, trang {chunk.Trang}]");
                 ctx.AppendLine(chunk.NoiDung);
                 ctx.AppendLine();
-                // Chỉ hiển thị làm nguồn trích dẫn khi đoạn thực sự khớp tốt, tránh "nguồn ảo" cho câu hỏi chung chung
+                // Đoạn khớp tốt -> nguồn ỨNG VIÊN; cite thật hay không do CiteGrounded quyết (đối chiếu câu trả lời).
                 if (score >= NguongHienNguon)
-                    nguon.Add(new NguonTraLoiDto(chunk.MaTaiLieu, chunk.TaiLieu.TenFile, chunk.Trang));
+                    ungVien.Add(new NguonUngVien(new NguonTraLoiDto(chunk.MaTaiLieu, chunk.TenFile, chunk.Trang), chunk.NoiDungNorm));
                 stt++;
             }
         }
@@ -219,13 +535,22 @@ public class ChatbotController : ControllerBase
             ctx.AppendLine(duLieuMon);
         }
 
-        const string systemPrompt =
+        // Dựng hội thoại: các lượt trước (tối đa 6) + lượt hiện tại (kèm ngữ cảnh tài liệu/dữ liệu)
+        var messages = new List<ChatTurn>();
+        foreach (var h in lichSu.TakeLast(6))
+            messages.Add(new ChatTurn(h.VaiTro == "bot" ? "assistant" : "user", h.NoiDung));
+        messages.Add(new ChatTurn("user", $"{ctx}\n=== CÂU HỎI CỦA SINH VIÊN ===\n{request.CauHoi}"));
+
+        return (messages, ungVien);
+    }
+
+    private const string SystemPrompt =
             "Bạn là \"Trợ lý ảo sinh viên\" thân thiện của Trường Đại học Hàng hải Việt Nam (VMU). " +
             "Phong cách: gần gũi, tự nhiên, ấm áp như một anh/chị khoá trên; xưng \"mình\" và gọi người hỏi là \"bạn\"; có thể dùng emoji nhẹ nhàng.\n\n" +
             "Bạn có các nguồn thông tin: (1) NGỮ CẢNH TÀI LIỆU trích từ nội quy/sổ tay/giáo trình; " +
             "(2) DỮ LIỆU HỆ THỐNG gồm CƠ CẤU TỔ CHỨC (khoa/viện, bộ môn, ngành đào tạo) và DỮ LIỆU MÔN HỌC (giảng viên giảng dạy, độ khó môn học thống kê từ điểm khoá trước); " +
             "(3) kiến thức chung về học tập, ngành nghề, kỹ năng cho sinh viên; " +
-            "(4) công cụ tìm kiếm web `tim_kiem_web` để tra cứu thông tin BÊN NGOÀI / cập nhật khi 3 nguồn trên không đủ.\n\n" +
+            "(4) công cụ tìm web tim_kiem_web cho thông tin BÊN NGOÀI / cập nhật khi 3 nguồn trên không đủ.\n\n" +
             "QUY TẮC QUAN TRỌNG NHẤT về cách trả lời:\n" +
             "- NGẮN GỌN và ĐÚNG TRỌNG TÂM. Trả lời thẳng vào đúng điều được hỏi, KHÔNG thêm thông tin/lời khuyên không được hỏi.\n" +
             "- Độ dài tương xứng câu hỏi: câu hỏi tra cứu đơn giản (vd \"khoa X có bộ môn nào\", \"môn Y mấy tín chỉ\") chỉ trả lời gọn trong 1-3 câu hoặc một danh sách ngắn. KHÔNG dùng bảng biểu dài dòng, KHÔNG kể lể lan man.\n" +
@@ -237,58 +562,8 @@ public class ChatbotController : ControllerBase
             "- Ưu tiên dùng tài liệu + dữ liệu hệ thống; được kết hợp kiến thức chung của bạn để câu trả lời hữu ích, sinh động hơn (miễn là trong phạm vi học thuật/giáo dục).\n" +
             "- Thông tin QUY ĐỊNH/CHÍNH THỨC riêng của trường (học phí, lịch, thủ tục, con số cụ thể...) không có trong nguồn nào: nói rõ chưa có trong hệ thống và khuyên liên hệ phòng/khoa phụ trách — KHÔNG bịa số liệu.\n" +
             "- Tư vấn chọn giảng viên/độ khó: dựa vào điểm trung bình & tỉ lệ đạt, nói gọn lý do, nhắc đây là số liệu tham khảo từ khoá trước.\n" +
-            "- TRƯỚC KHI làm bất cứ điều gì, hãy kiểm tra câu hỏi có thuộc phạm vi học tập/môn học/ngành nghề/đời sống sinh viên–nhà trường không. Nếu KHÔNG (xổ số, cờ bạc, bói toán, chính trị nhạy cảm, giải trí ngoài lề...) thì TỪ CHỐI ngay và TUYỆT ĐỐI KHÔNG gọi công cụ `tim_kiem_web`.\n" +
-            "- DÙNG CÔNG CỤ `tim_kiem_web` (chỉ cho câu hỏi ĐÚNG phạm vi) khi cần thông tin BÊN NGOÀI hệ thống mà bạn không chắc chắn: ví dụ cơ hội nghề nghiệp/mức lương của một ngành, xu hướng công nghệ mới, định nghĩa/khái niệm chuyên ngành, thông tin tuyển dụng/chứng chỉ, kiến thức cập nhật... Sau khi có kết quả, hãy tổng hợp lại ngắn gọn bằng lời của bạn (đừng dán nguyên kết quả thô) và có thể nhắc 'theo thông tin trên mạng'. KHÔNG cần tìm web cho những câu đã trả lời được từ tài liệu/dữ liệu hệ thống.\n" +
-            "- Chỉ trao đổi trong phạm vi học tập, môn học, ngành nghề và đời sống sinh viên/nhà trường. Câu hỏi ngoài phạm vi (chính trị nhạy cảm, nội dung không phù hợp, chuyện phiếm...) thì từ chối nhẹ nhàng và mời quay lại chủ đề học tập — và KHÔNG dùng công cụ tìm web cho những câu này.\n\n" +
-            "ĐÁNH DẤU NGUỒN: Nếu câu trả lời CÓ dùng thông tin từ phần NGỮ CẢNH TÀI LIỆU, hãy kết thúc bằng đúng một dòng riêng cuối cùng: [[DUNG_TAILIEU]]. " +
-            "Nếu trả lời từ DỮ LIỆU HỆ THỐNG, kết quả tìm web hoặc kiến thức chung (không dùng tài liệu nội bộ), TUYỆT ĐỐI không thêm dòng đó.";
-
-        // Dựng hội thoại: các lượt trước (tối đa 6) + lượt hiện tại (kèm ngữ cảnh tài liệu/dữ liệu)
-        var messages = new List<ChatTurn>();
-        foreach (var h in lichSu.TakeLast(6))
-            messages.Add(new ChatTurn(h.VaiTro == "bot" ? "assistant" : "user", h.NoiDung));
-        messages.Add(new ChatTurn("user", $"{ctx}\n=== CÂU HỎI CỦA SINH VIÊN ===\n{request.CauHoi}"));
-
-        // Công cụ tìm kiếm web cho mô hình tự gọi khi cần thông tin ngoài hệ thống
-        var tools = new List<ChatToolDef>
-        {
-            new("tim_kiem_web",
-                "Tìm kiếm thông tin trên Internet khi câu hỏi cần dữ liệu bên ngoài hệ thống nhà trường (nghề nghiệp, xu hướng công nghệ, khái niệm chuyên ngành, thông tin cập nhật...).",
-                new
-                {
-                    type = "object",
-                    properties = new { query = new { type = "string", description = "Từ khoá/truy vấn tìm kiếm, nên ngắn gọn, rõ ràng" } },
-                    required = new[] { "query" },
-                }),
-        };
-
-        ChatToolHandler handler = async (name, argsJson, c) =>
-        {
-            if (name != "tim_kiem_web") return "Công cụ không hỗ trợ.";
-            string query = "";
-            try
-            {
-                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(argsJson) ? "{}" : argsJson);
-                if (doc.RootElement.TryGetProperty("query", out var q)) query = q.GetString() ?? "";
-            }
-            catch { /* args lỗi -> để query rỗng */ }
-            if (string.IsNullOrWhiteSpace(query)) return "(không có từ khoá tìm kiếm)";
-            var kq = await _webSearch.SearchAsync(query, c);
-            return string.IsNullOrWhiteSpace(kq) ? "(không tìm thấy kết quả phù hợp trên web)" : $"Kết quả tìm kiếm cho \"{query}\":\n{kq}";
-        };
-
-        string traLoi;
-        try { traLoi = await _aiChat.ChatWithToolsAsync(systemPrompt, messages, tools, handler); }
-        catch (Exception ex) { return StatusCode(502, new { message = "Không thể kết nối dịch vụ AI: " + ex.Message }); }
-
-        // Mô hình đánh dấu [[DUNG_TAILIEU]] khi thực sự dùng tài liệu -> chỉ khi đó mới hiện nguồn trích dẫn
-        var coDungTaiLieu = traLoi.Contains("[[DUNG_TAILIEU]]");
-        traLoi = traLoi.Replace("[[DUNG_TAILIEU]]", "").TrimEnd();
-
-        var nguonHienThi = coDungTaiLieu
-            ? nguon.GroupBy(n => new { n.MaTaiLieu, n.Trang }).Select(g => g.First()).ToList()
-            : new List<NguonTraLoiDto>();
-
-        return Ok(new ChatbotResponse(traLoi, nguonHienThi));
-    }
+            "- XẾP LỊCH HỌC: Bạn CÓ công cụ goi_y_lich_hoc để GỢI Ý thời khoá biểu cho chính bạn sinh viên đang hỏi. Khi bạn ấy nhờ xếp/gợi ý lịch học, đăng ký môn kỳ này — ĐỪNG từ chối hay đẩy sang phòng Đào tạo — hãy GỌI công cụ đó, truyền lại yêu cầu kèm ràng buộc (tránh thứ/buổi/tiết, ưu tiên/tránh giảng viên...). Khi có kết quả, BẮT BUỘC LIỆT KÊ CHI TIẾT ít nhất 1 phương án đầy đủ — mỗi môn một dòng theo dạng: \"• Tên môn — lớp — GV — Thứ X tiết Y-Z\". (Đây là ngoại lệ của quy tắc ngắn gọn: phải cho sinh viên XEM được lịch, đừng chỉ tóm tắt suông.) Sau đó nói rõ đây là GỢI Ý tham khảo và bạn ấy TỰ đăng ký trên hệ thống (bạn KHÔNG tự đăng ký giúp), nhắc còn phương án khác và hỏi có muốn chỉnh ràng buộc không.\n" +
+            "- DỮ LIỆU HỌC VỤ CỦA CHÍNH SINH VIÊN: Hệ thống ĐÃ BIẾT sinh viên nào đang đăng nhập (qua phiên đăng nhập) — TUYỆT ĐỐI KHÔNG hỏi mã sinh viên / họ tên / năm học; các công cụ tự biết là ai. Khi bạn ấy hỏi về tình trạng học tập của bản thân (đã đăng ký gì, đã đạt/đã học môn nào, kỳ này được/cần học gì, còn môn nào), PHẢI GỌI NGAY đúng công cụ để lấy số liệu THẬT, không hỏi ngược, không bịa: 'đã đăng ký lớp/lịch của mình' → xem_lich_da_dang_ky; 'đã đạt/đã học/được học/còn môn nào phải học' → xem_chuong_trinh_ky_nay. Trình bày kết quả gọn, rõ.\n" +
+            "- TÌM WEB: khi câu hỏi ĐÚNG phạm vi (nghề nghiệp, công nghệ, khái niệm chuyên ngành, chứng chỉ...) cần thông tin BÊN NGOÀI mà tài liệu/dữ liệu hệ thống không có và bạn không chắc, hãy GỌI tim_kiem_web; có kết quả thì tổng hợp lại NGẮN GỌN bằng lời của bạn (có thể nói 'theo thông tin trên mạng'), đừng dán thô. KHÔNG tìm web cho câu đã trả lời được từ tài liệu/hệ thống.\n" +
+            "- Chỉ trao đổi trong phạm vi học tập, môn học, ngành nghề và đời sống sinh viên/nhà trường. Câu hỏi ngoài phạm vi (chính trị nhạy cảm, nội dung không phù hợp, chuyện phiếm...) thì từ chối nhẹ nhàng và mời quay lại chủ đề học tập — và TUYỆT ĐỐI KHÔNG gọi tim_kiem_web cho những câu này.";
 }

@@ -3,11 +3,8 @@ namespace QuanLyTruongHoc.Application.Interfaces;
 // Một lượt hội thoại. Role: "user" | "assistant"
 public record ChatTurn(string Role, string Content);
 
-// Định nghĩa một công cụ (function) mà mô hình có thể gọi. Parameters là JSON schema (object bất kỳ).
-public record ChatToolDef(string Name, string Description, object Parameters);
-
-// Hàm thực thi công cụ: nhận tên công cụ + tham số (JSON) -> trả kết quả dạng văn bản.
-public delegate Task<string> ChatToolHandler(string name, string argumentsJson, CancellationToken ct);
+// Định nghĩa 1 công cụ (function) cho LLM gọi (agentic). ThamSo = JSON schema của tham số.
+public record ChatTool(string Name, string MoTa, object ThamSo);
 
 public interface IAiChatService
 {
@@ -16,12 +13,10 @@ public interface IAiChatService
     // Hội thoại nhiều lượt (giữ ngữ cảnh các tin nhắn trước)
     Task<string> ChatAsync(string systemPrompt, IReadOnlyList<ChatTurn> messages, CancellationToken ct = default);
 
-    // Hội thoại có khả năng gọi công cụ (tool/function calling). Mô hình tự quyết định khi nào gọi công cụ;
-    // service sẽ chạy vòng lặp: gọi mô hình -> thực thi công cụ -> đưa kết quả lại cho mô hình -> ... -> câu trả lời cuối.
-    Task<string> ChatWithToolsAsync(
-        string systemPrompt,
-        IReadOnlyList<ChatTurn> messages,
-        IReadOnlyList<ChatToolDef> tools,
-        ChatToolHandler handler,
+    // Streaming + tool-calling (agentic): trả từng mảnh nội dung khi mô hình sinh ra.
+    // tools rỗng = chat thường. Nếu mô hình gọi tool -> chạy executeTool(tenTool, thamSoJson) rồi tổng hợp.
+    IAsyncEnumerable<string> ChatStreamAsync(
+        string systemPrompt, IReadOnlyList<ChatTurn> messages,
+        IReadOnlyList<ChatTool> tools, Func<string, string, Task<string>> executeTool,
         CancellationToken ct = default);
 }

@@ -32,7 +32,8 @@ services:
       Jwt__Issuer: "QuanLyTruongHoc.Api"
       Jwt__Audience: "QuanLyTruongHoc.Client"
       NvidiaAi__BaseUrl: "https://integrate.api.nvidia.com/v1"
-      NvidiaAi__ApiKey: "idk"
+      # Key đọc từ biến môi trường / file .env (gitignored) — KHÔNG hardcode key vào compose.
+      NvidiaAi__ApiKey: "${NVIDIA_API_KEY:-}"
       NvidiaAi__Model: "openai/gpt-oss-120b"
     ports:
       - "5000:8080"

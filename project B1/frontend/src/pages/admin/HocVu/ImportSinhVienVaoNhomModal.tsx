@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
+// xlsx được nạp ĐỘNG (await import) trong handler -> tách khỏi bundle chính (chỉ tải khi admin import/xuất).
 import { FileSpreadsheet, Upload, Download, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 import {
   type ImportSinhVienVaoNhomRow,
@@ -35,7 +35,8 @@ export default function ImportSinhVienVaoNhomModal({
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportSinhVienVaoNhomResult | null>(null);
 
-  function downloadTemplate() {
+  async function downloadTemplate() {
+    const XLSX = await import('xlsx');
     const data = [TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE_ROWS];
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws['!cols'] = [{ wch: 14 }, { wch: 28 }];
@@ -54,8 +55,9 @@ export default function ImportSinhVienVaoNhomModal({
     setRows([]);
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
+        const XLSX = await import('xlsx');
         const data = evt.target?.result;
         const wb = XLSX.read(data, { type: 'binary' });
         const sheet = wb.Sheets[wb.SheetNames[0]];

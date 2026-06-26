@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\QuanLyTruongHoc.Api.props" />
-</Project>

@@ -3,7 +3,6 @@ import { FileText, Download, BookOpen, ScrollText, NotebookText } from 'lucide-r
 import {
   type TaiLieuSinhVien,
   type LoaiTaiLieu,
-  LOAI_TAI_LIEU_LABEL,
   getTaiLieuSinhVien,
   downloadTaiLieu,
   formatKichThuoc,
