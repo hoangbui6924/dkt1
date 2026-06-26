@@ -42,9 +42,15 @@ Logic nằm ở **`GoiYLichService`** (Infrastructure, tách khỏi controller t
 
 **Hai lối vào, một service**:
 - Trang đăng ký: `POST /api/dang-ky-hoc-phan/goi-y-thoi-khoa-bieu` (controller mỏng → `GoiYLichService.GoiYAsync`).
-- **Chatbot agentic** (function-calling): chatbot được cấp tool `goi_y_lich_hoc`; khi SV nhờ xếp lịch, LLM tự gọi tool → service chạy **in-process** (không self-HTTP) → LLM trình bày phương án + nhắc tự đăng ký. Chỉ GỢI Ý, không tự đăng ký (human-in-the-loop). Xem `IAiChatService.ChatStreamAsync(tools, executeTool)` + tool-loop.
+- **Chatbot agentic** (function-calling, in-process — không self-HTTP): registry **4 tool** trong `IAiChatService.ChatStreamAsync(tools, executeTool)`:
+  - `goi_y_lich_hoc` — xếp TKB (gọi `GoiYLichService`); output lộ `[ID:..]` để nối sang đăng ký.
+  - `xem_lich_da_dang_ky` / `xem_chuong_trinh_ky_nay` — tra cứu read-only của chính SV.
+  - `tim_kiem_web` — tìm Internet khi thiếu dữ liệu nội bộ (`WebSearchService`: DuckDuckGo → Wikipedia VI, không key).
+  - `dang_ky_lop_hoc` — **tool GHI có cổng an toàn**: chatbot CHỈ trả `HanhDongCho` (đề xuất), KHÔNG tự ghi; FE xác nhận rồi gọi `POST /dang-ky-hoc-phan/{id}` (đủ validate). 2 chế độ: **"Chủ động có quy tắc"** (mặc định — modal xác nhận, human-in-loop) / **"Trao quyền nguy hiểm"** (opt-in — tự đăng ký).
 
 > Quy tắc nghiệp vụ dùng chung (đạt/cải thiện, đợt áp dụng, kỳ đạt, trùng giờ) ở `Application/Common/` (`DangKyRules`, `LichHoc`) — một nguồn sự thật cho cả endpoint đăng ký lẫn service xếp lịch.
+>
+> **WebMCP** (forward-looking, Chrome 149+ origin trial): `frontend/src/webmcp.ts` đăng ký tool B1 qua `navigator.modelContext` (hỏi trợ lý + điều hướng) để **agent trình duyệt** điều khiển trong phiên đăng nhập của SV; feature-detect → no-op nếu trình duyệt chưa hỗ trợ.
 
 ## 5. Mô hình dữ liệu (điểm chính)
 - Học vụ: `KhoaVien` → `BoMon`/`NganhHoc` → `MonHoc` (loại, tín chỉ) → `KhungChuongTrinh` (môn theo kỳ).
