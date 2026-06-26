@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  BookOpen,
-  FileSpreadsheet,
-  Download,
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  ChevronsUpDown,
-} from 'lucide-react';
+import { BookOpen, FileSpreadsheet, Download, Plus, Pencil, Trash2, Search } from 'lucide-react';
 import {
   type MonHoc as MonHocModel,
   type MonHocInput,
@@ -20,12 +11,19 @@ import {
 import { type BoMon, getBoMons } from '../../../services/boMonService';
 import { type KhoaVien, getKhoaViens } from '../../../services/khoaVienService';
 import Modal from '../../../components/Modal';
+import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
 
 const ITEMS_PER_PAGE = 15;
 
-type SortDir = 'asc' | 'desc';
+type SortField = 'tenMonHoc' | 'loaiMonHoc' | 'soTinChi' | 'boMonKhoaVien' | 'tienQuyet' | 'soLopHocKy';
 
 const LOAI_MON_HOC_OPTIONS = ['Bắt buộc', 'Tự chọn'] as const;
+
+function boMonKhoaVienLabel(item: MonHocModel): string {
+  if (item.tenBoMon) return item.tenBoMon;
+  if (item.tenKhoaVien) return `${item.tenKhoaVien} (trực thuộc khoa viện)`;
+  return '-';
+}
 
 const EMPTY_FORM: MonHocInput = {
   tenMonHoc: '',
@@ -46,9 +44,16 @@ export default function MonHocPage() {
   const [error, setError] = useState('');
 
   const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<SortField>('tenMonHoc');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
+
+  const [filterTenMonHoc, setFilterTenMonHoc] = useState<Set<string> | null>(null);
+  const [filterLoaiMonHoc, setFilterLoaiMonHoc] = useState<Set<string> | null>(null);
+  const [filterSoTinChi, setFilterSoTinChi] = useState<Set<string> | null>(null);
+  const [filterBoMonKhoaVien, setFilterBoMonKhoaVien] = useState<Set<string> | null>(null);
+  const [filterTienQuyet, setFilterTienQuyet] = useState<Set<string> | null>(null);
+  const [filterSoLopHocKy, setFilterSoLopHocKy] = useState<Set<string> | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MonHocModel | null>(null);
@@ -86,11 +91,45 @@ export default function MonHocPage() {
     load();
   }, []);
 
-  useEffect(() => {
-    const close = () => setSortMenuOpen(false);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, []);
+  const optionsTenMonHoc = useMemo(
+    () => [...new Set(items.map((i) => i.tenMonHoc))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsLoaiMonHoc = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.loaiMonHoc ?? '-'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsSoTinChi = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.soTinChi))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [items],
+  );
+  const optionsBoMonKhoaVien = useMemo(
+    () =>
+      [...new Set(items.map(boMonKhoaVienLabel))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsTienQuyet = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.tenMonHocTienQuyet ?? '-'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsSoLopHocKy = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.soLopHocKy))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [items],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -98,15 +137,59 @@ export default function MonHocPage() {
     if (q) {
       result = result.filter((i) => i.tenMonHoc.toLowerCase().includes(q));
     }
-    result = [...result].sort((a, b) =>
-      sortDir === 'asc' ? a.tenMonHoc.localeCompare(b.tenMonHoc) : b.tenMonHoc.localeCompare(a.tenMonHoc),
-    );
+    if (filterTenMonHoc) result = result.filter((i) => filterTenMonHoc.has(i.tenMonHoc));
+    if (filterLoaiMonHoc) result = result.filter((i) => filterLoaiMonHoc.has(i.loaiMonHoc ?? '-'));
+    if (filterSoTinChi) result = result.filter((i) => filterSoTinChi.has(String(i.soTinChi)));
+    if (filterBoMonKhoaVien) result = result.filter((i) => filterBoMonKhoaVien.has(boMonKhoaVienLabel(i)));
+    if (filterTienQuyet) result = result.filter((i) => filterTienQuyet.has(i.tenMonHocTienQuyet ?? '-'));
+    if (filterSoLopHocKy) result = result.filter((i) => filterSoLopHocKy.has(String(i.soLopHocKy)));
+
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'tenMonHoc':
+          cmp = a.tenMonHoc.localeCompare(b.tenMonHoc);
+          break;
+        case 'loaiMonHoc':
+          cmp = (a.loaiMonHoc ?? '-').localeCompare(b.loaiMonHoc ?? '-');
+          break;
+        case 'soTinChi':
+          cmp = a.soTinChi - b.soTinChi;
+          break;
+        case 'boMonKhoaVien':
+          cmp = boMonKhoaVienLabel(a).localeCompare(boMonKhoaVienLabel(b));
+          break;
+        case 'tienQuyet':
+          cmp = (a.tenMonHocTienQuyet ?? '-').localeCompare(b.tenMonHocTienQuyet ?? '-');
+          break;
+        case 'soLopHocKy':
+          cmp = a.soLopHocKy - b.soLopHocKy;
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
     return result;
-  }, [items, search, sortDir]);
+  }, [
+    items,
+    search,
+    sortField,
+    sortDir,
+    filterTenMonHoc,
+    filterLoaiMonHoc,
+    filterSoTinChi,
+    filterBoMonKhoaVien,
+    filterTienQuyet,
+    filterSoLopHocKy,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  function setSort(field: SortField, dir: SortDir) {
+    setSortField(field);
+    setSortDir(dir);
+  }
 
   function openAddModal() {
     setEditing(null);
@@ -222,6 +305,19 @@ export default function MonHocPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Tìm nhanh theo tên môn học"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="w-56 bg-transparent text-sm outline-none"
+            />
+          </div>
           <button
             type="button"
             className="flex items-center gap-1.5 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
@@ -257,7 +353,6 @@ export default function MonHocPage() {
 
         <table className="min-w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10">
-            {/* Row 1: column headers */}
             <tr className="bg-blue-50">
               <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                 No.
@@ -265,88 +360,102 @@ export default function MonHocPage() {
               <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Tên Môn học</span>
-                  <div className="relative flex-shrink-0">
-                    <button
-                      type="button"
-                      className="text-gray-400 hover:text-blue-600"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSortMenuOpen((v) => !v);
-                      }}
-                    >
-                      <ChevronsUpDown className="h-3.5 w-3.5" />
-                    </button>
-                    {sortMenuOpen && (
-                      <div className="absolute right-0 z-50 mt-1 w-32 rounded border border-gray-200 bg-white shadow-lg">
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'asc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('asc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          A → Z
-                        </button>
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'desc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('desc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          Z → A
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <ExcelColumnFilter
+                    options={optionsTenMonHoc}
+                    selected={filterTenMonHoc}
+                    onChange={(s) => {
+                      setFilterTenMonHoc(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'tenMonHoc' ? sortDir : null}
+                    onSort={(dir) => setSort('tenMonHoc', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
                 </div>
               </th>
-              <th className="w-40 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Loại môn học
+              <th className="w-40 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Loại môn học</span>
+                  <ExcelColumnFilter
+                    options={optionsLoaiMonHoc}
+                    selected={filterLoaiMonHoc}
+                    onChange={(s) => {
+                      setFilterLoaiMonHoc(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'loaiMonHoc' ? sortDir : null}
+                    onSort={(dir) => setSort('loaiMonHoc', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Số tín chỉ
+              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Số tín chỉ</span>
+                  <ExcelColumnFilter
+                    options={optionsSoTinChi}
+                    selected={filterSoTinChi}
+                    onChange={(s) => {
+                      setFilterSoTinChi(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'soTinChi' ? sortDir : null}
+                    onSort={(dir) => setSort('soTinChi', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
-              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Bộ môn / Khoa viện
+              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Bộ môn / Khoa viện</span>
+                  <ExcelColumnFilter
+                    options={optionsBoMonKhoaVien}
+                    selected={filterBoMonKhoaVien}
+                    onChange={(s) => {
+                      setFilterBoMonKhoaVien(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'boMonKhoaVien' ? sortDir : null}
+                    onSort={(dir) => setSort('boMonKhoaVien', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-44 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Tiên quyết
+              <th className="w-44 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Tiên quyết</span>
+                  <ExcelColumnFilter
+                    options={optionsTienQuyet}
+                    selected={filterTienQuyet}
+                    onChange={(s) => {
+                      setFilterTienQuyet(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'tienQuyet' ? sortDir : null}
+                    onSort={(dir) => setSort('tienQuyet', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Số lớp đã mở
+              <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Số lớp đã mở</span>
+                  <ExcelColumnFilter
+                    options={optionsSoLopHocKy}
+                    selected={filterSoLopHocKy}
+                    onChange={(s) => {
+                      setFilterSoLopHocKy(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'soLopHocKy' ? sortDir : null}
+                    onSort={(dir) => setSort('soLopHocKy', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
               <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                 Hành động
               </th>
-            </tr>
-
-            {/* Row 2: search inputs */}
-            <tr className="border-b border-gray-200 bg-white">
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200 px-2 py-1">
-                <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5">
-                  <input
-                    type="text"
-                    placeholder="→ Tìm theo tên môn học"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(1);
-                    }}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  />
-                  <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
-                </div>
-              </th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th></th>
             </tr>
           </thead>
 

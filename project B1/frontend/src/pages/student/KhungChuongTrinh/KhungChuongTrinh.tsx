@@ -46,6 +46,13 @@ export default function StudentKhungChuongTrinhPage() {
       list.push(m);
       map.set(m.kyHoc, list);
     });
+    // Trong mỗi học kỳ: môn bắt buộc hiển thị trước, môn tự chọn xếp xuống dưới
+    map.forEach((list) =>
+      list.sort((a, b) => {
+        if (a.loaiMonHoc === b.loaiMonHoc) return 0;
+        return a.loaiMonHoc === 'Bắt buộc' ? -1 : 1;
+      }),
+    );
     return new Map([...map.entries()].sort((a, b) => a[0] - b[0]));
   }, [monHocs]);
 
@@ -148,9 +155,11 @@ export default function StudentKhungChuongTrinhPage() {
             <p style={{ color: 'var(--text-muted)' }}>Khung chương trình chưa có môn học nào.</p>
           )}
 
-          <div className="module-grid">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16 }}>
             {[...monHocTheoKy.entries()].map(([ky, mons]) => {
-              const tongTC = mons.reduce((sum, m) => sum + m.soTinChi, 0);
+              const tongTC = mons
+                .filter((m) => m.loaiMonHoc === 'Bắt buộc')
+                .reduce((sum, m) => sum + m.soTinChi, 0);
               return (
                 <div
                   key={ky}
@@ -172,13 +181,30 @@ export default function StudentKhungChuongTrinhPage() {
                   </div>
                   <div>
                     {mons.map((m, idx) => (
-                      <div
-                        key={m.ma}
-                        style={{
-                          padding: '10px 14px',
-                          borderBottom: idx === mons.length - 1 ? 'none' : '1px solid var(--border)',
-                        }}
-                      >
+                      <div key={m.ma}>
+                        {m.loaiMonHoc === 'Tự chọn' && (idx === 0 || mons[idx - 1].loaiMonHoc !== 'Tự chọn') && (
+                          <div
+                            style={{
+                              padding: '6px 14px',
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              letterSpacing: 0.4,
+                              textTransform: 'uppercase',
+                              color: 'var(--text-muted)',
+                              background: 'var(--bg)',
+                              borderBottom: '1px solid var(--border)',
+                              borderTop: idx === 0 ? 'none' : '1px solid var(--border)',
+                            }}
+                          >
+                            Tự chọn
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: idx === mons.length - 1 ? 'none' : '1px solid var(--border)',
+                          }}
+                        >
                         <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-h)' }}>
                           {m.tenMonHoc}
                         </p>
@@ -202,6 +228,7 @@ export default function StudentKhungChuongTrinhPage() {
                             Tiên quyết: {m.tenMonHocTienQuyet}
                           </p>
                         )}
+                        </div>
                       </div>
                     ))}
                   </div>

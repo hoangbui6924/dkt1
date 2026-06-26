@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Layers,
-  FileSpreadsheet,
-  Download,
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  ChevronsUpDown,
-} from 'lucide-react';
+import { Layers, FileSpreadsheet, Download, Plus, Pencil, Trash2, Search } from 'lucide-react';
 import {
   type BoMon as BoMonModel,
   getBoMons,
@@ -18,10 +9,12 @@ import {
 } from '../../../services/boMonService';
 import { type KhoaVien, getKhoaViens } from '../../../services/khoaVienService';
 import Modal from '../../../components/Modal';
+import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
 
 const ITEMS_PER_PAGE = 15;
 
-type SortDir = 'asc' | 'desc';
+type SortField = 'tenBoMon' | 'khoaVien' | 'soMonHoc' | 'soGiangVien';
+const KHONG_THUOC_KHOA_VIEN = 'Không thuộc khoa viện';
 
 export default function BoMonPage() {
   const [items, setItems] = useState<BoMonModel[]>([]);
@@ -30,9 +23,14 @@ export default function BoMonPage() {
   const [error, setError] = useState('');
 
   const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<SortField>('tenBoMon');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
+
+  const [filterTenBoMon, setFilterTenBoMon] = useState<Set<string> | null>(null);
+  const [filterKhoaVien, setFilterKhoaVien] = useState<Set<string> | null>(null);
+  const [filterSoMonHoc, setFilterSoMonHoc] = useState<Set<string> | null>(null);
+  const [filterSoGiangVien, setFilterSoGiangVien] = useState<Set<string> | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<BoMonModel | null>(null);
@@ -59,11 +57,31 @@ export default function BoMonPage() {
     load();
   }, []);
 
-  useEffect(() => {
-    const close = () => setSortMenuOpen(false);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, []);
+  const optionsTenBoMon = useMemo(
+    () => [...new Set(items.map((i) => i.tenBoMon))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsKhoaVien = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.tenKhoaVien ?? KHONG_THUOC_KHOA_VIEN))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsSoMonHoc = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.soMonHoc))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [items],
+  );
+  const optionsSoGiangVien = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.soGiangVien))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [items],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -71,15 +89,40 @@ export default function BoMonPage() {
     if (q) {
       result = result.filter((i) => i.tenBoMon.toLowerCase().includes(q));
     }
-    result = [...result].sort((a, b) =>
-      sortDir === 'asc' ? a.tenBoMon.localeCompare(b.tenBoMon) : b.tenBoMon.localeCompare(a.tenBoMon),
-    );
+    if (filterTenBoMon) result = result.filter((i) => filterTenBoMon.has(i.tenBoMon));
+    if (filterKhoaVien) result = result.filter((i) => filterKhoaVien.has(i.tenKhoaVien ?? KHONG_THUOC_KHOA_VIEN));
+    if (filterSoMonHoc) result = result.filter((i) => filterSoMonHoc.has(String(i.soMonHoc)));
+    if (filterSoGiangVien) result = result.filter((i) => filterSoGiangVien.has(String(i.soGiangVien)));
+
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'tenBoMon':
+          cmp = a.tenBoMon.localeCompare(b.tenBoMon);
+          break;
+        case 'khoaVien':
+          cmp = (a.tenKhoaVien ?? KHONG_THUOC_KHOA_VIEN).localeCompare(b.tenKhoaVien ?? KHONG_THUOC_KHOA_VIEN);
+          break;
+        case 'soMonHoc':
+          cmp = a.soMonHoc - b.soMonHoc;
+          break;
+        case 'soGiangVien':
+          cmp = a.soGiangVien - b.soGiangVien;
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
     return result;
-  }, [items, search, sortDir]);
+  }, [items, search, sortField, sortDir, filterTenBoMon, filterKhoaVien, filterSoMonHoc, filterSoGiangVien]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  function setSort(field: SortField, dir: SortDir) {
+    setSortField(field);
+    setSortDir(dir);
+  }
 
   function openAddModal() {
     setEditing(null);
@@ -144,6 +187,19 @@ export default function BoMonPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Tìm nhanh theo tên bộ môn"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="w-56 bg-transparent text-sm outline-none"
+            />
+          </div>
           <button
             type="button"
             className="flex items-center gap-1.5 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
@@ -172,7 +228,6 @@ export default function BoMonPage() {
 
         <table className="min-w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10">
-            {/* Row 1: column headers */}
             <tr className="bg-blue-50">
               <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                 No.
@@ -180,80 +235,70 @@ export default function BoMonPage() {
               <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Tên Bộ môn</span>
-                  <div className="relative flex-shrink-0">
-                    <button
-                      type="button"
-                      className="text-gray-400 hover:text-blue-600"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSortMenuOpen((v) => !v);
-                      }}
-                    >
-                      <ChevronsUpDown className="h-3.5 w-3.5" />
-                    </button>
-                    {sortMenuOpen && (
-                      <div className="absolute right-0 z-50 mt-1 w-32 rounded border border-gray-200 bg-white shadow-lg">
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'asc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('asc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          A → Z
-                        </button>
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'desc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('desc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          Z → A
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <ExcelColumnFilter
+                    options={optionsTenBoMon}
+                    selected={filterTenBoMon}
+                    onChange={(s) => {
+                      setFilterTenBoMon(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'tenBoMon' ? sortDir : null}
+                    onSort={(dir) => setSort('tenBoMon', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
                 </div>
               </th>
-              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Khoa viện
+              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Khoa viện</span>
+                  <ExcelColumnFilter
+                    options={optionsKhoaVien}
+                    selected={filterKhoaVien}
+                    onChange={(s) => {
+                      setFilterKhoaVien(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'khoaVien' ? sortDir : null}
+                    onSort={(dir) => setSort('khoaVien', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Số môn học
+              <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Số môn học</span>
+                  <ExcelColumnFilter
+                    options={optionsSoMonHoc}
+                    selected={filterSoMonHoc}
+                    onChange={(s) => {
+                      setFilterSoMonHoc(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'soMonHoc' ? sortDir : null}
+                    onSort={(dir) => setSort('soMonHoc', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
-              <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Số giảng viên
+              <th className="w-32 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Số giảng viên</span>
+                  <ExcelColumnFilter
+                    options={optionsSoGiangVien}
+                    selected={filterSoGiangVien}
+                    onChange={(s) => {
+                      setFilterSoGiangVien(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'soGiangVien' ? sortDir : null}
+                    onSort={(dir) => setSort('soGiangVien', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
               <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                 Hành động
               </th>
-            </tr>
-
-            {/* Row 2: search inputs */}
-            <tr className="border-b border-gray-200 bg-white">
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200 px-2 py-1">
-                <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5">
-                  <input
-                    type="text"
-                    placeholder="→ Tìm theo tên bộ môn"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(1);
-                    }}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  />
-                  <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
-                </div>
-              </th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th></th>
             </tr>
           </thead>
 

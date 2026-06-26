@@ -1,15 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Users,
-  FileSpreadsheet,
-  Download,
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  ChevronsUpDown,
-  KeyRound,
-} from 'lucide-react';
+import { Users, FileSpreadsheet, Download, Plus, Pencil, Trash2, Search, KeyRound } from 'lucide-react';
 import {
   type GiangVien as GiangVienModel,
   type GiangVienInput,
@@ -21,13 +11,20 @@ import {
 import { type BoMon, getBoMons } from '../../../services/boMonService';
 import { type KhoaVien, getKhoaViens } from '../../../services/khoaVienService';
 import Modal from '../../../components/Modal';
+import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
 
 const ITEMS_PER_PAGE = 15;
 
-type SortDir = 'asc' | 'desc';
 type AttachMode = 'boMon' | 'khoaVien';
+type SortField = 'hoTen' | 'boMonKhoaVien' | 'email' | 'soDienThoai' | 'taiKhoan' | 'soLopDangDay';
 
 const EMPTY_FORM: GiangVienInput = { hoTen: '', maBoMon: null, maKhoaVien: null, email: '', soDienThoai: '' };
+
+function boMonKhoaVienLabel(item: GiangVienModel): string {
+  if (item.tenBoMon) return item.tenBoMon;
+  if (item.tenKhoaVien) return `${item.tenKhoaVien} (trực thuộc khoa viện)`;
+  return '-';
+}
 
 export default function GiangVienPage() {
   const [items, setItems] = useState<GiangVienModel[]>([]);
@@ -37,9 +34,16 @@ export default function GiangVienPage() {
   const [error, setError] = useState('');
 
   const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<SortField>('hoTen');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
+
+  const [filterHoTen, setFilterHoTen] = useState<Set<string> | null>(null);
+  const [filterBoMonKhoaVien, setFilterBoMonKhoaVien] = useState<Set<string> | null>(null);
+  const [filterEmail, setFilterEmail] = useState<Set<string> | null>(null);
+  const [filterSoDienThoai, setFilterSoDienThoai] = useState<Set<string> | null>(null);
+  const [filterTaiKhoan, setFilterTaiKhoan] = useState<Set<string> | null>(null);
+  const [filterSoLopDangDay, setFilterSoLopDangDay] = useState<Set<string> | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<GiangVienModel | null>(null);
@@ -73,15 +77,49 @@ export default function GiangVienPage() {
     load();
   }, []);
 
-  useEffect(() => {
-    const close = () => setSortMenuOpen(false);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, []);
-
   const boMonsInKhoaVien = useMemo(
     () => (formMaKhoaVien ? boMons.filter((b) => b.maKhoaVien === formMaKhoaVien) : boMons),
     [boMons, formMaKhoaVien],
+  );
+
+  const optionsHoTen = useMemo(
+    () => [...new Set(items.map((i) => i.hoTen))].sort((a, b) => a.localeCompare(b)).map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsBoMonKhoaVien = useMemo(
+    () =>
+      [...new Set(items.map(boMonKhoaVienLabel))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsEmail = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.email ?? '-'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsSoDienThoai = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.soDienThoai ?? '-'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsTaiKhoan = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.tenDangNhapTaiKhoan ?? '-'))]
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ value: v, label: v })),
+    [items],
+  );
+  const optionsSoLopDangDay = useMemo(
+    () =>
+      [...new Set(items.map((i) => i.soLopDangDay))]
+        .sort((a, b) => a - b)
+        .map((v) => ({ value: String(v), label: String(v) })),
+    [items],
   );
 
   const filtered = useMemo(() => {
@@ -90,15 +128,59 @@ export default function GiangVienPage() {
     if (q) {
       result = result.filter((i) => i.hoTen.toLowerCase().includes(q));
     }
-    result = [...result].sort((a, b) =>
-      sortDir === 'asc' ? a.hoTen.localeCompare(b.hoTen) : b.hoTen.localeCompare(a.hoTen),
-    );
+    if (filterHoTen) result = result.filter((i) => filterHoTen.has(i.hoTen));
+    if (filterBoMonKhoaVien) result = result.filter((i) => filterBoMonKhoaVien.has(boMonKhoaVienLabel(i)));
+    if (filterEmail) result = result.filter((i) => filterEmail.has(i.email ?? '-'));
+    if (filterSoDienThoai) result = result.filter((i) => filterSoDienThoai.has(i.soDienThoai ?? '-'));
+    if (filterTaiKhoan) result = result.filter((i) => filterTaiKhoan.has(i.tenDangNhapTaiKhoan ?? '-'));
+    if (filterSoLopDangDay) result = result.filter((i) => filterSoLopDangDay.has(String(i.soLopDangDay)));
+
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'hoTen':
+          cmp = a.hoTen.localeCompare(b.hoTen);
+          break;
+        case 'boMonKhoaVien':
+          cmp = boMonKhoaVienLabel(a).localeCompare(boMonKhoaVienLabel(b));
+          break;
+        case 'email':
+          cmp = (a.email ?? '-').localeCompare(b.email ?? '-');
+          break;
+        case 'soDienThoai':
+          cmp = (a.soDienThoai ?? '-').localeCompare(b.soDienThoai ?? '-');
+          break;
+        case 'taiKhoan':
+          cmp = (a.tenDangNhapTaiKhoan ?? '-').localeCompare(b.tenDangNhapTaiKhoan ?? '-');
+          break;
+        case 'soLopDangDay':
+          cmp = a.soLopDangDay - b.soLopDangDay;
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
     return result;
-  }, [items, search, sortDir]);
+  }, [
+    items,
+    search,
+    sortField,
+    sortDir,
+    filterHoTen,
+    filterBoMonKhoaVien,
+    filterEmail,
+    filterSoDienThoai,
+    filterTaiKhoan,
+    filterSoLopDangDay,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  function setSort(field: SortField, dir: SortDir) {
+    setSortField(field);
+    setSortDir(dir);
+  }
 
   function openAddModal() {
     setEditing(null);
@@ -223,6 +305,19 @@ export default function GiangVienPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Tìm nhanh theo họ tên"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="w-56 bg-transparent text-sm outline-none"
+            />
+          </div>
           <button
             type="button"
             className="flex items-center gap-1.5 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
@@ -258,7 +353,6 @@ export default function GiangVienPage() {
 
         <table className="min-w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10">
-            {/* Row 1: column headers */}
             <tr className="bg-blue-50">
               <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                 No.
@@ -266,88 +360,102 @@ export default function GiangVienPage() {
               <th className="border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Họ tên</span>
-                  <div className="relative flex-shrink-0">
-                    <button
-                      type="button"
-                      className="text-gray-400 hover:text-blue-600"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSortMenuOpen((v) => !v);
-                      }}
-                    >
-                      <ChevronsUpDown className="h-3.5 w-3.5" />
-                    </button>
-                    {sortMenuOpen && (
-                      <div className="absolute right-0 z-50 mt-1 w-32 rounded border border-gray-200 bg-white shadow-lg">
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'asc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('asc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          A → Z
-                        </button>
-                        <button
-                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${sortDir === 'desc' ? 'font-bold text-blue-600' : 'text-gray-700'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSortDir('desc');
-                            setSortMenuOpen(false);
-                          }}
-                        >
-                          Z → A
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <ExcelColumnFilter
+                    options={optionsHoTen}
+                    selected={filterHoTen}
+                    onChange={(s) => {
+                      setFilterHoTen(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'hoTen' ? sortDir : null}
+                    onSort={(dir) => setSort('hoTen', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
                 </div>
               </th>
-              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Bộ môn / Khoa viện
+              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Bộ môn / Khoa viện</span>
+                  <ExcelColumnFilter
+                    options={optionsBoMonKhoaVien}
+                    selected={filterBoMonKhoaVien}
+                    onChange={(s) => {
+                      setFilterBoMonKhoaVien(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'boMonKhoaVien' ? sortDir : null}
+                    onSort={(dir) => setSort('boMonKhoaVien', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Email
+              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Email</span>
+                  <ExcelColumnFilter
+                    options={optionsEmail}
+                    selected={filterEmail}
+                    onChange={(s) => {
+                      setFilterEmail(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'email' ? sortDir : null}
+                    onSort={(dir) => setSort('email', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Số điện thoại
+              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Số điện thoại</span>
+                  <ExcelColumnFilter
+                    options={optionsSoDienThoai}
+                    selected={filterSoDienThoai}
+                    onChange={(s) => {
+                      setFilterSoDienThoai(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'soDienThoai' ? sortDir : null}
+                    onSort={(dir) => setSort('soDienThoai', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Tài khoản
+              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Tài khoản</span>
+                  <ExcelColumnFilter
+                    options={optionsTaiKhoan}
+                    selected={filterTaiKhoan}
+                    onChange={(s) => {
+                      setFilterTaiKhoan(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'taiKhoan' ? sortDir : null}
+                    onSort={(dir) => setSort('taiKhoan', dir)}
+                    sortLabels={['A → Z', 'Z → A']}
+                  />
+                </div>
               </th>
-              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
-                Số lớp dạy
+              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-sm font-semibold text-gray-600">Số lớp dạy</span>
+                  <ExcelColumnFilter
+                    options={optionsSoLopDangDay}
+                    selected={filterSoLopDangDay}
+                    onChange={(s) => {
+                      setFilterSoLopDangDay(s);
+                      setPage(1);
+                    }}
+                    sortDir={sortField === 'soLopDangDay' ? sortDir : null}
+                    onSort={(dir) => setSort('soLopDangDay', dir)}
+                    sortLabels={['Thấp → Cao', 'Cao → Thấp']}
+                  />
+                </div>
               </th>
               <th className="w-28 border-b border-gray-200 px-3 py-2 text-center text-sm font-semibold text-gray-600">
                 Hành động
               </th>
-            </tr>
-
-            {/* Row 2: search inputs */}
-            <tr className="border-b border-gray-200 bg-white">
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200 px-2 py-1">
-                <div className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5">
-                  <input
-                    type="text"
-                    placeholder="→ Tìm theo họ tên"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(1);
-                    }}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  />
-                  <Search className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
-                </div>
-              </th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th className="border-r border-gray-200"></th>
-              <th></th>
             </tr>
           </thead>
 
