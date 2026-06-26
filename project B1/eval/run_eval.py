@@ -63,6 +63,7 @@ def judge_quality(question, answer):
 # chỉ hỗ trợ trong phạm vi học tập). Các cụm này hầu như KHÔNG xuất hiện trong câu trả lời thường -> vẫn phân biệt được.
 REFUSE_MARKERS = [
     "pham vi hoc tap", "ngoai pham vi", "quay lai chu de", "chu de hoc tap",
+    "pham vi ho tro", "trong pham vi", "khong nam trong pham vi", "khong thuoc pham vi",
     "minh chi ho tro", "minh chi co the ho tro", "minh chi trao doi", "khong the tra loi",
     "khong ho tro", "mon hoc va", "sinh vien va nha truong",
     "xin loi", "khong the ", "khong dap ung", "khong tra loi", "khong cung cap",
