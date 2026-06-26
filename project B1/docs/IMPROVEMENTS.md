@@ -2,6 +2,15 @@
 
 Danh sách việc nên làm để **liên tục cải thiện**, ưu tiên từ trên xuống. Tick khi xong, thêm khi phát hiện.
 
+## 🆕 Nâng cấp agentic + an toàn (PR "agentic RAG")
+- [x] **Tool GHI có cổng an toàn** — `dang_ky_lop_hoc(ma_lop_hoc_ky)`: chatbot CHỈ ĐỀ XUẤT (`HanhDongCho`), KHÔNG tự ghi; đăng ký thật luôn qua `POST /dang-ky-hoc-phan/{id}` (đủ validate). 2 chế độ (widget): **"Chủ động có quy tắc"** (mặc định, human-in-loop: modal xác nhận) và **"Trao quyền nguy hiểm"** (opt-in, tự đăng ký). Đúng SOTA HITL: đọc auto, GHI gated. `goi_y_lich_hoc` lộ `[ID:..]` để model nối gợi ý → đăng ký.
+- [x] **Tool tìm web** `tim_kiem_web` (DuckDuckGo → Wikipedia VI, không key) — gộp từ `main` thành **tool thứ 4** trong vòng lặp streaming (chạy được cả trong stream).
+- [x] **Prompt config-first** — system prompt (STATIC) override qua config `Chatbot:SystemPrompt` (env/appsettings), không build lại; ngữ cảnh ĐỘNG tách ở message user mỗi request.
+- [x] **Chống OOM / loop khi dùng lâu** — `IMemoryCache` `SizeLimit=50k` + `Size` mỗi entry (chunk cache Size = số chunk → vượt ngưỡng thì re-load thay vì OOM); cap ngữ cảnh LLM (`MaxCtxChars=24k`); vòng tool cap 1, retry cap 3, lịch sử cap 6, stream cap `max_tokens` — đều bounded.
+- [x] **Eval RAGAS-flavored** — judge thêm điểm **TRUNG THỰC (faithfulness)** cạnh CHẤT LƯỢNG; `--label`/`--compare` (results.jsonl) để so cấu hình (reasoning_effort/threshold).
+- [x] **WebMCP** (forward-looking, Chrome 149+ origin trial) — expose tool B1 qua `navigator.modelContext` (`hoi_tro_ly_sinh_vien` + `mo_trang_sinh_vien`); feature-detect → no-op nếu trình duyệt chưa hỗ trợ; ghi vẫn qua luồng xác nhận.
+- [ ] RAGAS đầy đủ (context-precision/recall) cần expose chunk đã retrieve qua endpoint debug → để dành.
+
 ## 🔴 Chất lượng build / CI (quan trọng nhất)
 - [x] **Sửa lỗi build frontend** `TS6133: 'LOAI_TAI_LIEU_LABEL' unused` (`pages/student/TaiLieu/TaiLieu.tsx`). *Trước fix: `docker compose up --build` fresh SẬP.* → commit ngay.
 - [x] **Thêm CI (GitHub Actions)** chạy `dotnet build` + `npm run build` mỗi push/PR. → `/.github/workflows/ci.yml` (đặt ở **gốc repo**, không phải `project B1/`, vì GitHub Actions chỉ đọc `.github/workflows` ở gốc; scope `paths: project B1/**` để không kích hoạt khi `wiii-main` đổi). Verify local: cả 2 lệnh build pass (FE không còn TS6133, BE 0 errors). **Đây là bài học #1 từ Neko Core**: Neko có `ci.yml` và chính nó bắt được một bug cross-platform mà local Windows giấu. Lỗi `TS6133` ở trên CHẮC CHẮN bị CI chặn trước khi merge. Mẫu:

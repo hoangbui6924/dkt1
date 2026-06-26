@@ -37,9 +37,11 @@ public class ChatbotController : ControllerBase
     private readonly IMemoryCache _cache;
     private readonly IGoiYLichService _goiYLich;
     private readonly IWebSearchService _webSearch;
+    private readonly string _systemPrompt;
+    private HanhDongCho? _hanhDongCho; // hành động GHI mà tool đề xuất trong request này (chatbot KHÔNG tự thực thi)
 
     public ChatbotController(AppDbContext db, IEmbeddingService embedding, IAiChatService aiChat,
-        IMemoryCache cache, IGoiYLichService goiYLich, IWebSearchService webSearch)
+        IMemoryCache cache, IGoiYLichService goiYLich, IWebSearchService webSearch, IConfiguration config)
     {
         _db = db;
         _embedding = embedding;
@@ -47,6 +49,11 @@ public class ChatbotController : ControllerBase
         _cache = cache;
         _goiYLich = goiYLich;
         _webSearch = webSearch;
+        // Config-first (SOTA): cho override system prompt (STATIC) qua config "Chatbot:SystemPrompt"
+        // (env/appsettings) mà không cần build lại; mặc định dùng prompt trong code. Ngữ cảnh DYNAMIC
+        // (tài liệu/dữ liệu hệ thống) tách riêng ở message user mỗi request (xem ChuanBiHoiThoaiAsync).
+        var fromConfig = config["Chatbot:SystemPrompt"];
+        _systemPrompt = string.IsNullOrWhiteSpace(fromConfig) ? SystemPrompt : fromConfig;
     }
 
     // Công cụ (tool) cho LLM gọi — agentic, READ-ONLY: 3 tool học vụ (xếp lịch / đã đăng ký / chương trình)
@@ -91,6 +98,18 @@ public class ChatbotController : ControllerBase
                 type = "object",
                 properties = new { query = new { type = "string", description = "Từ khoá/truy vấn tìm kiếm, ngắn gọn rõ ràng." } },
                 required = new[] { "query" },
+            }),
+        new ChatTool(
+            "dang_ky_lop_hoc",
+            "ĐĂNG KÝ một lớp học phần cho CHÍNH sinh viên đang đăng nhập, khi sinh viên đã CHỌN RÕ một lớp cụ thể " +
+            "(dùng mã lớp [ID:...] lấy từ kết quả goi_y_lich_hoc). Công cụ này CHỈ TẠO ĐỀ XUẤT đăng ký — hệ thống sẽ " +
+            "hỏi sinh viên xác nhận trước khi ghi thật; bạn KHÔNG được khẳng định 'đã đăng ký xong'. Chỉ gọi khi sinh viên " +
+            "nói rõ muốn đăng ký lớp nào (vd 'đăng ký lớp đó', 'đăng ký lớp 01 môn X').",
+            new
+            {
+                type = "object",
+                properties = new { ma_lop_hoc_ky = new { type = "integer", description = "Mã lớp học kỳ (ID) cần đăng ký, lấy từ gợi ý/lịch." } },
+                required = new[] { "ma_lop_hoc_ky" },
             }),
     };
 
@@ -236,13 +255,13 @@ public class ChatbotController : ControllerBase
         var sb = new StringBuilder();
         try
         {
-            await foreach (var t in _aiChat.ChatStreamAsync(SystemPrompt, messages, CongCu, ChayCongCuAsync, HttpContext.RequestAborted))
+            await foreach (var t in _aiChat.ChatStreamAsync(_systemPrompt, messages, CongCu, ChayCongCuAsync, HttpContext.RequestAborted))
                 sb.Append(t);
         }
         catch (Exception ex) { return StatusCode(502, new { message = "Không thể kết nối dịch vụ AI: " + ex.Message }); }
 
         var traLoi = sb.ToString();
-        return Ok(new ChatbotResponse(traLoi.TrimEnd(), CiteGrounded(traLoi, ungVien)));
+        return Ok(new ChatbotResponse(traLoi.TrimEnd(), CiteGrounded(traLoi, ungVien), _hanhDongCho));
     }
 
     // Streaming SSE: phát từng mảnh trả lời ngay khi LLM sinh -> độ trễ cảm nhận ~1s thay vì chờ trọn ~20s.
@@ -271,14 +290,14 @@ public class ChatbotController : ControllerBase
         Response.Headers["X-Accel-Buffering"] = "no"; // chặn proxy buffer luồng SSE
 
         var full = new StringBuilder();
-        await foreach (var token in _aiChat.ChatStreamAsync(SystemPrompt, messages, CongCu, ChayCongCuAsync, ct))
+        await foreach (var token in _aiChat.ChatStreamAsync(_systemPrompt, messages, CongCu, ChayCongCuAsync, ct))
         {
             full.Append(token);
             await WriteSseAsync(new { delta = token }, ct);
         }
 
         // Cite sau khi có trọn câu trả lời: chỉ nguồn ứng viên có nội dung THỰC SỰ xuất hiện trong câu trả lời.
-        await WriteSseAsync(new { done = true, nguon = CiteGrounded(full.ToString(), ungVien) }, ct);
+        await WriteSseAsync(new { done = true, nguon = CiteGrounded(full.ToString(), ungVien), hanhDong = _hanhDongCho }, ct);
     }
 
     private async Task WriteSseAsync(object payload, CancellationToken ct)
@@ -300,6 +319,7 @@ public class ChatbotController : ControllerBase
             "goi_y_lich_hoc" => await ToolXepLichAsync(sv, thamSoJson),
             "xem_lich_da_dang_ky" => await ToolLichDaDangKyAsync(sv),
             "xem_chuong_trinh_ky_nay" => await ToolChuongTrinhKyNayAsync(sv),
+            "dang_ky_lop_hoc" => await ToolDangKyLopHocAsync(sv, thamSoJson),
             _ => "Công cụ không được hỗ trợ.",
         };
     }
@@ -397,6 +417,33 @@ public class ChatbotController : ControllerBase
         return sb.ToString();
     }
 
+    // Tool GHI: chỉ ĐỀ XUẤT đăng ký (KHÔNG tự ghi) — set _hanhDongCho; FE xác nhận (mặc định) hoặc tự chạy (chế độ nguy hiểm).
+    // Ghi thật luôn đi qua POST /api/dang-ky-hoc-phan/{maLopHocKy} (đủ validate điều kiện/trùng lịch), do FE gọi sau xác nhận.
+    private async Task<string> ToolDangKyLopHocAsync(SinhVien sv, string thamSoJson)
+    {
+        int maLop;
+        try
+        {
+            using var doc = JsonDocument.Parse(thamSoJson);
+            maLop = doc.RootElement.TryGetProperty("ma_lop_hoc_ky", out var m) && m.ValueKind == JsonValueKind.Number
+                ? m.GetInt32() : 0;
+        }
+        catch (JsonException) { maLop = 0; }
+        if (maLop <= 0) return "Chưa rõ lớp nào để đăng ký — cần mã lớp (ID) lấy từ gợi ý thời khoá biểu.";
+
+        var lop = await _db.LopHocTrongKys
+            .Include(l => l.MonHoc)
+            .Include(l => l.LopHocKyGiangViens).ThenInclude(g => g.GiangVien)
+            .FirstOrDefaultAsync(l => l.MaLopHocKy == maLop);
+        if (lop is null) return $"Không tìm thấy lớp học phần có mã {maLop}.";
+
+        var gv = lop.LopHocKyGiangViens.FirstOrDefault()?.GiangVien?.HoTen;
+        var moTa = $"{lop.MonHoc?.TenMonHoc} — lớp {lop.TenLop}" + (gv != null ? $", GV {gv}" : "");
+        _hanhDongCho = new HanhDongCho("dang_ky_lop_hoc", maLop, moTa);
+        return $"Đã chuẩn bị đăng ký: {moTa}. Hãy báo sinh viên BẤM XÁC NHẬN để hệ thống ghi thật — " +
+               "mình KHÔNG tự đăng ký khi sinh viên chưa xác nhận.";
+    }
+
     // Tóm tắt kết quả xếp lịch thành text gọn cho LLM trình bày (≤3 phương án để tiết kiệm token).
     private static string TomTatLich(List<GoiYThoiKhoaBieuResultDto>? ds)
     {
@@ -412,7 +459,7 @@ public class ChatbotController : ControllerBase
             foreach (var m in pa.MonHocs)
             {
                 var buoi = string.Join("; ", m.BuoiHocs.Select(b => $"Thứ {b.Thu} tiết {b.TietBatDau}-{b.TietKetThuc}"));
-                sb.AppendLine($"- {m.TenMonHoc} (lớp {m.TenLop}, {m.SoTinChi} TC, GV {m.TenGiangVien}): {buoi}");
+                sb.AppendLine($"- {m.TenMonHoc} (lớp {m.TenLop} [ID:{m.MaLopHocKy}], {m.SoTinChi} TC, GV {m.TenGiangVien}): {buoi}");
             }
             if (pa.MonKhongXepDuoc.Count > 0)
                 sb.AppendLine("  Chưa xếp được: " + string.Join(", ", pa.MonKhongXepDuoc.Select(x => $"{x.TenMonHoc} ({x.LyDo})")));
@@ -456,10 +503,12 @@ public class ChatbotController : ControllerBase
         var cauTraCuu = string.IsNullOrWhiteSpace(luotHoiTruoc) ? request.CauHoi : $"{luotHoiTruoc}. {request.CauHoi}";
 
         // 1) Đoạn tài liệu ứng viên (nạp sẵn + cache 10 phút). Có chọn môn -> tập trung môn đó + nội quy/sổ tay; không thì toàn bộ.
-        var allChunks = await _cache.GetOrCreateAsync(CacheKeyChunks, e =>
+        var allChunks = await _cache.GetOrCreateAsync(CacheKeyChunks, async e =>
         {
             e.AbsoluteExpirationRelativeToNow = CacheTtl;
-            return LoadChunkVecsAsync();
+            var data = await LoadChunkVecsAsync();
+            e.Size = data.Count; // OOM guard: Size = số chunk; vượt SizeLimit -> entry không cache (re-load, không OOM)
+            return data;
         }) ?? new List<ChunkVec>();
 
         var candidates = request.MaMonHoc.HasValue
@@ -495,11 +544,13 @@ public class ChatbotController : ControllerBase
         var coCau = await _cache.GetOrCreateAsync(CacheKeyCoCau, e =>
         {
             e.AbsoluteExpirationRelativeToNow = CacheTtl;
+            e.Size = 1;
             return BuildCoCauToChucAsync();
         }) ?? "";
         var duLieuMon = await _cache.GetOrCreateAsync(CacheKeyDuLieuMon, e =>
         {
             e.AbsoluteExpirationRelativeToNow = CacheTtl;
+            e.Size = 1;
             return BuildDuLieuMonHocAsync();
         }) ?? "";
 
@@ -535,11 +586,17 @@ public class ChatbotController : ControllerBase
             ctx.AppendLine(duLieuMon);
         }
 
+        // OOM/token guard: chặn ngữ cảnh phình quá lớn (vd dữ liệu môn tăng) -> cắt bớt để prompt không nổ.
+        const int MaxCtxChars = 24_000;
+        var ctxStr = ctx.ToString();
+        if (ctxStr.Length > MaxCtxChars)
+            ctxStr = ctxStr[..MaxCtxChars] + "\n... (ngữ cảnh đã cắt bớt do quá dài)";
+
         // Dựng hội thoại: các lượt trước (tối đa 6) + lượt hiện tại (kèm ngữ cảnh tài liệu/dữ liệu)
         var messages = new List<ChatTurn>();
         foreach (var h in lichSu.TakeLast(6))
             messages.Add(new ChatTurn(h.VaiTro == "bot" ? "assistant" : "user", h.NoiDung));
-        messages.Add(new ChatTurn("user", $"{ctx}\n=== CÂU HỎI CỦA SINH VIÊN ===\n{request.CauHoi}"));
+        messages.Add(new ChatTurn("user", $"{ctxStr}\n=== CÂU HỎI CỦA SINH VIÊN ===\n{request.CauHoi}"));
 
         return (messages, ungVien);
     }
@@ -565,5 +622,6 @@ public class ChatbotController : ControllerBase
             "- XẾP LỊCH HỌC: Bạn CÓ công cụ goi_y_lich_hoc để GỢI Ý thời khoá biểu cho chính bạn sinh viên đang hỏi. Khi bạn ấy nhờ xếp/gợi ý lịch học, đăng ký môn kỳ này — ĐỪNG từ chối hay đẩy sang phòng Đào tạo — hãy GỌI công cụ đó, truyền lại yêu cầu kèm ràng buộc (tránh thứ/buổi/tiết, ưu tiên/tránh giảng viên...). Khi có kết quả, BẮT BUỘC LIỆT KÊ CHI TIẾT ít nhất 1 phương án đầy đủ — mỗi môn một dòng theo dạng: \"• Tên môn — lớp — GV — Thứ X tiết Y-Z\". (Đây là ngoại lệ của quy tắc ngắn gọn: phải cho sinh viên XEM được lịch, đừng chỉ tóm tắt suông.) Sau đó nói rõ đây là GỢI Ý tham khảo và bạn ấy TỰ đăng ký trên hệ thống (bạn KHÔNG tự đăng ký giúp), nhắc còn phương án khác và hỏi có muốn chỉnh ràng buộc không.\n" +
             "- DỮ LIỆU HỌC VỤ CỦA CHÍNH SINH VIÊN: Hệ thống ĐÃ BIẾT sinh viên nào đang đăng nhập (qua phiên đăng nhập) — TUYỆT ĐỐI KHÔNG hỏi mã sinh viên / họ tên / năm học; các công cụ tự biết là ai. Khi bạn ấy hỏi về tình trạng học tập của bản thân (đã đăng ký gì, đã đạt/đã học môn nào, kỳ này được/cần học gì, còn môn nào), PHẢI GỌI NGAY đúng công cụ để lấy số liệu THẬT, không hỏi ngược, không bịa: 'đã đăng ký lớp/lịch của mình' → xem_lich_da_dang_ky; 'đã đạt/đã học/được học/còn môn nào phải học' → xem_chuong_trinh_ky_nay. Trình bày kết quả gọn, rõ.\n" +
             "- TÌM WEB: khi câu hỏi ĐÚNG phạm vi (nghề nghiệp, công nghệ, khái niệm chuyên ngành, chứng chỉ...) cần thông tin BÊN NGOÀI mà tài liệu/dữ liệu hệ thống không có và bạn không chắc, hãy GỌI tim_kiem_web; có kết quả thì tổng hợp lại NGẮN GỌN bằng lời của bạn (có thể nói 'theo thông tin trên mạng'), đừng dán thô. KHÔNG tìm web cho câu đã trả lời được từ tài liệu/hệ thống.\n" +
+            "- ĐĂNG KÝ LỚP: khi sinh viên nói rõ muốn đăng ký một lớp CỤ THỂ (đã thấy trong gợi ý, có mã [ID:...]), hãy gọi dang_ky_lop_hoc với mã đó. Đây chỉ là ĐỀ XUẤT — hệ thống sẽ hỏi sinh viên xác nhận trước khi ghi; TUYỆT ĐỐI đừng nói 'đã đăng ký xong'. Nếu chưa rõ lớp nào, hãy gợi ý lịch trước rồi hỏi sinh viên chọn.\n" +
             "- Chỉ trao đổi trong phạm vi học tập, môn học, ngành nghề và đời sống sinh viên/nhà trường. Câu hỏi ngoài phạm vi (chính trị nhạy cảm, nội dung không phù hợp, chuyện phiếm...) thì từ chối nhẹ nhàng và mời quay lại chủ đề học tập — và TUYỆT ĐỐI KHÔNG gọi tim_kiem_web cho những câu này.";
 }

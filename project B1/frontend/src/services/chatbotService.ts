@@ -16,6 +16,18 @@ export interface ChatLichSuItem {
   noiDung: string;
 }
 
+// Hành động GHI mà chatbot đề xuất (chưa thực thi). FE xác nhận (human-in-loop) hoặc tự chạy theo chế độ.
+export interface HanhDongCho {
+  loai: string; // hiện có: "dang_ky_lop_hoc"
+  maLopHocKy: number;
+  moTa: string;
+}
+
+export interface ChatbotStreamKetQua {
+  nguon: NguonTraLoi[];
+  hanhDong: HanhDongCho | null;
+}
+
 export async function hoiChatbot(
   cauHoi: string,
   maMonHoc: number | null,
@@ -35,7 +47,7 @@ export async function hoiChatbotStream(
   lichSu: ChatLichSuItem[],
   onDelta: (text: string) => void,
   signal?: AbortSignal,
-): Promise<NguonTraLoi[]> {
+): Promise<ChatbotStreamKetQua> {
   const token = localStorage.getItem('token');
   const res = await fetch(`${BASE_URL}/chatbot/hoi-stream`, {
     method: 'POST',
@@ -62,6 +74,7 @@ export async function hoiChatbotStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let nguon: NguonTraLoi[] = [];
+  let hanhDong: HanhDongCho | null = null;
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -76,11 +89,19 @@ export async function hoiChatbotStream(
       if (!line.startsWith('data:')) continue;
       const data = line.slice(5).trim();
       if (!data) continue;
-      const payload = JSON.parse(data) as { delta?: string; done?: boolean; nguon?: NguonTraLoi[] };
+      const payload = JSON.parse(data) as {
+        delta?: string;
+        done?: boolean;
+        nguon?: NguonTraLoi[];
+        hanhDong?: HanhDongCho | null;
+      };
       if (payload.delta) onDelta(payload.delta);
-      if (payload.done) nguon = payload.nguon ?? [];
+      if (payload.done) {
+        nguon = payload.nguon ?? [];
+        hanhDong = payload.hanhDong ?? null;
+      }
     }
   }
 
-  return nguon;
+  return { nguon, hanhDong };
 }
