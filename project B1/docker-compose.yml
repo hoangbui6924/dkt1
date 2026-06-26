@@ -32,7 +32,7 @@ services:
       Jwt__Issuer: "QuanLyTruongHoc.Api"
       Jwt__Audience: "QuanLyTruongHoc.Client"
       NvidiaAi__BaseUrl: "https://integrate.api.nvidia.com/v1"
-      NvidiaAi__ApiKey: "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"
+      NvidiaAi__ApiKey: "putsomething"
       NvidiaAi__Model: "openai/gpt-oss-120b"
     ports:
       - "5000:8080"
