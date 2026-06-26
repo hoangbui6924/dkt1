@@ -108,7 +108,7 @@
     "id": "agent-xep-lich",
     "question": "Bạn xếp giúp mình lịch học kỳ này nhé, ưu tiên buổi sáng và tránh thứ 7.",
     "_note": "Agentic tool-calling: PHẢI gọi tool xếp lịch + liệt kê lịch (môn/lớp/thứ-tiết), KHÔNG từ chối đẩy sang phòng đào tạo. Latency cao vì tool + scheduler + tổng hợp.",
-    "assert": { "contains_any": ["phuong an", "tiet"], "not_contains": ["phong dao tao"], "max_latency": 20 }
+    "assert": { "contains_any": ["phuong an", "tiet", "thu 2", "thu 3", "thu 4", "thu 5", "thu 6"], "not_contains": ["phong dao tao"], "max_latency": 20 }
   },
 
   {
