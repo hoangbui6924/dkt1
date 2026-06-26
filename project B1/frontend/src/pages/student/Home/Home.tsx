@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Award, Layers, BookOpen, ClipboardList } from 'lucide-react';
+import { GraduationCap, Award, Layers, BookOpen, ClipboardList, CalendarPlus, ArrowRight } from 'lucide-react';
 import { type SinhVien, getSinhVienMe } from '../../../services/sinhVienService';
-import '../../admin/Home/Home.css';
+import './Home.css';
 
 export default function StudentHome() {
   const navigate = useNavigate();
@@ -31,67 +31,97 @@ export default function StudentHome() {
       title: 'Khung chương trình',
       desc: 'Theo dõi chương trình đào tạo của ngành, môn học theo từng học kỳ',
       path: '/student/khung-chuong-trinh',
+      icon: ClipboardList,
+      color: '#2f6fed',
+      soft: 'rgba(47, 111, 237, 0.08)',
+      soft2: 'rgba(47, 111, 237, 0.05)',
     },
-    { title: 'Đăng ký học phần', desc: 'Đăng ký lớp học phần cho học kỳ sắp tới', path: '/student/dang-ky' },
-    { title: 'Kết quả học tập', desc: 'Xem điểm số, GPA theo từng học kỳ', path: '/student/ket-qua-hoc-tap' },
+    {
+      title: 'Đăng ký học phần',
+      desc: 'Đăng ký lớp học phần cho học kỳ sắp tới',
+      path: '/student/dang-ky',
+      icon: CalendarPlus,
+      color: '#16a34a',
+      soft: 'rgba(22, 163, 74, 0.08)',
+      soft2: 'rgba(22, 163, 74, 0.05)',
+    },
+    {
+      title: 'Kết quả học tập',
+      desc: 'Xem điểm số, GPA theo từng học kỳ',
+      path: '/student/ket-qua-hoc-tap',
+      icon: Award,
+      color: '#7c3aed',
+      soft: 'rgba(124, 58, 237, 0.08)',
+      soft2: 'rgba(124, 58, 237, 0.05)',
+    },
   ];
 
   return (
-    <div className="dashboard">
-      <div className="page-toolbar">
-        <div className="page-toolbar-title">
-          <ClipboardList size={18} />
-          <span>Tổng quan</span>
-        </div>
-      </div>
-
+    <div className="sd-dashboard">
       {loading && <p style={{ color: 'var(--text-muted)' }}>Đang tải...</p>}
       {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
 
       {sinhVien && (
         <>
-          <div className="stat-card" style={{ gap: 16 }}>
-            <div className="stat-icon stat-icon-blue">
-              <GraduationCap size={22} />
+          <div className="sd-welcome">
+            <div className="sd-avatar">
+              <GraduationCap size={28} />
             </div>
-            <div>
-              <div className="stat-value">{sinhVien.hoTen}</div>
-              <div className="stat-label">
+            <div className="sd-welcome-info">
+              <h1>Xin chào, {sinhVien.hoTen} 👋</h1>
+              <p>
                 {sinhVien.maSoSV} · {sinhVien.tenNganh} · {sinhVien.tenKhoaVien}
-              </div>
+              </p>
             </div>
           </div>
 
-          <div className="stat-grid">
+          <div className="sd-stat-grid">
             {stats.map((s) => {
               const Icon = s.icon;
               return (
-                <div className="stat-card" key={s.label}>
-                  <div className={`stat-icon stat-icon-${s.accent}`}>
-                    <Icon size={20} />
+                <div className="sd-stat-card" key={s.label}>
+                  <div className={`sd-stat-icon sd-stat-icon-${s.accent}`}>
+                    <Icon size={22} />
                   </div>
                   <div>
-                    <div className="stat-value">{s.value}</div>
-                    <div className="stat-label">{s.label}</div>
+                    <div className="sd-stat-value">{s.value}</div>
+                    <div className="sd-stat-label">{s.label}</div>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <h2 className="section-title">Chức năng</h2>
-          <div className="module-grid">
-            {modules.map((m) => (
-              <div
-                className="module-card"
-                key={m.title}
-                onClick={() => navigate(m.path)}
-                style={{ cursor: 'pointer' }}
-              >
-                <h3>{m.title}</h3>
-                <p>{m.desc}</p>
-              </div>
-            ))}
+          <h2 className="sd-section-title">Chức năng</h2>
+          <div className="sd-feature-grid">
+            {modules.map((m) => {
+              const Icon = m.icon;
+              return (
+                <div
+                  className="sd-feature-card"
+                  key={m.title}
+                  onClick={() => navigate(m.path)}
+                  style={
+                    {
+                      '--accent-color': m.color,
+                      '--accent-soft': m.soft,
+                      '--accent-soft-2': m.soft2,
+                    } as React.CSSProperties
+                  }
+                >
+                  <div>
+                    <div className="sd-feature-icon" style={{ background: m.color }}>
+                      <Icon size={22} />
+                    </div>
+                    <h3>{m.title}</h3>
+                    <p>{m.desc}</p>
+                  </div>
+                  <span className="sd-feature-arrow" style={{ color: m.color }}>
+                    Truy cập <ArrowRight size={14} />
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </>
       )}

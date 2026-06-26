@@ -6,9 +6,10 @@ import './Topbar.css';
 
 interface TopbarProps {
   title: string;
+  displayName?: string;
 }
 
-export default function Topbar({ title }: TopbarProps) {
+export default function Topbar({ title, displayName }: TopbarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -51,10 +52,10 @@ export default function Topbar({ title }: TopbarProps) {
 
         <div className="topbar-user">
           <button className="topbar-user-btn" type="button" onClick={() => setMenuOpen((v) => !v)}>
-            <span className="topbar-avatar">{user?.tenDangNhap?.charAt(0).toUpperCase() ?? 'A'}</span>
+            <span className="topbar-avatar">{(displayName ?? user?.tenDangNhap)?.charAt(0).toUpperCase() ?? 'A'}</span>
             <span className="topbar-user-info">
-              <strong>{user?.tenDangNhap}</strong>
-              <small>{user?.tenQuyen}</small>
+              <strong>{displayName ?? user?.tenDangNhap}</strong>
+              <small>{displayName ? user?.tenDangNhap : user?.tenQuyen}</small>
             </span>
             <ChevronDown size={16} />
           </button>
