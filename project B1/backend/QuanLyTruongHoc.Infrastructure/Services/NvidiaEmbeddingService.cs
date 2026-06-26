@@ -51,7 +51,7 @@ public class NvidiaEmbeddingService : IEmbeddingService
             truncate = "END",
         };
 
-        using var response = await _http.PostAsJsonAsync("embeddings", body, ct);
+        using var response = await HttpRetry.PostJsonWithRetryAsync(_http, "embeddings", body, maxAttempts: 3, ct);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
 

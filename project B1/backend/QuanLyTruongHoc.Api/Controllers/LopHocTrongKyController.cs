@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuanLyTruongHoc.Application.Common;
 using QuanLyTruongHoc.Application.DTOs.LopHocTrongKy;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
@@ -40,17 +41,6 @@ public class LopHocTrongKyController : ControllerBase
             l.LichHocs?.OrderBy(x => x.NgayBatDau).ThenBy(x => x.Thu).ThenBy(x => x.TietBatDau)
                 .Select(x => new LichHocDto(x.MaLich, x.Thu, x.TietBatDau, x.TietKetThuc, x.NgayBatDau, x.NgayKetThuc, x.PhongHoc)).ToList()
                 ?? new List<LichHocDto>());
-    }
-
-    // Hai buổi học trùng nhau khi: cùng thứ trong tuần, dải tiết giao nhau VÀ khoảng ngày giao nhau.
-    public static bool BuoiTrungNhau(
-        int thuA, int tietBdA, int tietKtA, DateOnly ngayBdA, DateOnly ngayKtA,
-        int thuB, int tietBdB, int tietKtB, DateOnly ngayBdB, DateOnly ngayKtB)
-    {
-        if (thuA != thuB) return false;
-        var trungTiet = tietBdA <= tietKtB && tietBdB <= tietKtA;
-        var trungNgay = ngayBdA <= ngayKtB && ngayBdB <= ngayKtA;
-        return trungTiet && trungNgay;
     }
 
     private static IQueryable<Domain.Entities.LopHocTrongKy> IncludeAll(IQueryable<Domain.Entities.LopHocTrongKy> q) =>
@@ -104,7 +94,7 @@ public class LopHocTrongKyController : ControllerBase
         {
             for (var j = i + 1; j < lichHocs.Count; j++)
             {
-                if (BuoiTrungNhau(
+                if (LichHoc.BuoiTrungNhau(
                     lichHocs[i].Thu, lichHocs[i].TietBatDau, lichHocs[i].TietKetThuc, lichHocs[i].NgayBatDau, lichHocs[i].NgayKetThuc,
                     lichHocs[j].Thu, lichHocs[j].TietBatDau, lichHocs[j].TietKetThuc, lichHocs[j].NgayBatDau, lichHocs[j].NgayKetThuc))
                     return "Các buổi học của lớp này đang trùng giờ với nhau";
@@ -127,7 +117,7 @@ public class LopHocTrongKyController : ControllerBase
         {
             foreach (var khac in lichKhac)
             {
-                if (BuoiTrungNhau(
+                if (LichHoc.BuoiTrungNhau(
                     lich.Thu, lich.TietBatDau, lich.TietKetThuc, lich.NgayBatDau, lich.NgayKetThuc,
                     khac.Thu, khac.TietBatDau, khac.TietKetThuc, khac.NgayBatDau, khac.NgayKetThuc))
                     return "Giảng viên này đã có lớp học khác trùng giờ trong học kỳ này";
@@ -153,7 +143,7 @@ public class LopHocTrongKyController : ControllerBase
             foreach (var khac in lichKhac)
             {
                 if (string.Equals(lich.PhongHoc!.Trim(), khac.PhongHoc!.Trim(), StringComparison.OrdinalIgnoreCase) &&
-                    BuoiTrungNhau(
+                    LichHoc.BuoiTrungNhau(
                         lich.Thu, lich.TietBatDau, lich.TietKetThuc, lich.NgayBatDau, lich.NgayKetThuc,
                         khac.Thu, khac.TietBatDau, khac.TietKetThuc, khac.NgayBatDau, khac.NgayKetThuc))
                     return $"Phòng học \"{lich.PhongHoc}\" đã được lớp \"{khac.LopHocTrongKy!.MonHoc!.TenMonHoc} ({khac.LopHocTrongKy.TenLop})\" sử dụng trùng giờ trong học kỳ này, vui lòng đổi phòng học khác";

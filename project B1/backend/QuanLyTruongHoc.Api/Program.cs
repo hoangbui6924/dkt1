@@ -15,12 +15,14 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddMemoryCache();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IGoiYLichService, GoiYLichService>();
 
 builder.Services.Configure<NvidiaAiSettings>(builder.Configuration.GetSection("NvidiaAi"));
 builder.Services.AddHttpClient<IAiChatService, NvidiaAiChatService>();
