@@ -57,9 +57,7 @@ export default function ThoiKhoaBieuGrid({ monHocs }: { monHocs: MonHocGoiY[] })
             <td key={thu} className="min-w-[110px] border border-gray-200 px-2 py-1 align-top text-xs">
               {items.map((it, i) => (
                 <div key={i}>
-                  <div className="font-medium text-blue-700">
-                    {it.tenMonHoc} ({it.tenLop})
-                  </div>
+                  <div className="font-medium text-blue-700">{it.tenLop}</div>
                   {it.tenGiangVien && <div className="text-gray-400">{it.tenGiangVien}</div>}
                 </div>
               ))}

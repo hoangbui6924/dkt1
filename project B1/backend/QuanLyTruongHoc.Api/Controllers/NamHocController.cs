@@ -43,6 +43,7 @@ public class NamHocController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<NamHocDto>> Create(CreateNamHocRequest request)
     {
         var ten = request.TenNamHoc.Trim();
@@ -65,6 +66,7 @@ public class NamHocController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(int id, UpdateNamHocRequest request)
     {
         var entity = await _db.NamHocs.FindAsync(id);
@@ -90,6 +92,7 @@ public class NamHocController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(int id)
     {
         var entity = await _db.NamHocs

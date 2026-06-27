@@ -27,6 +27,12 @@ export async function getGiangViens(): Promise<GiangVien[]> {
   return res.data;
 }
 
+// Thông tin giảng viên đang đăng nhập (cho cổng giảng viên).
+export async function getGiangVienMe(): Promise<GiangVien> {
+  const res = await api.get<GiangVien>('/giang-vien/me');
+  return res.data;
+}
+
 export async function createGiangVien(input: GiangVienInput): Promise<GiangVien> {
   const res = await api.post<GiangVien>('/giang-vien', input);
   return res.data;

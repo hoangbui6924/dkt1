@@ -78,6 +78,7 @@ public class DotDangKyController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<DotDangKyDto>> Create(CreateDotDangKyRequest request)
     {
         var err = await Validate(request.MaHocKy, request);
@@ -106,6 +107,7 @@ public class DotDangKyController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(int id, UpdateDotDangKyRequest request)
     {
         var entity = await _db.DotDangKys.FindAsync(id);
@@ -130,6 +132,7 @@ public class DotDangKyController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(int id)
     {
         var entity = await _db.DotDangKys.FindAsync(id);

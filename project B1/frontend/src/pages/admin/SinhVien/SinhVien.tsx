@@ -359,7 +359,7 @@ export default function SinhVienPage() {
                   />
                 </div>
               </th>
-              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+              <th className="w-100 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                 <div className="flex items-center justify-between gap-1">
                   <span>Khoá học ngành</span>
                   <ExcelColumnFilter

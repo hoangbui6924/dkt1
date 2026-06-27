@@ -43,10 +43,15 @@ export interface LopHocTrongKyInput {
   lichHocs: LichHocInput[];
 }
 
-export async function getLopHocTrongKys(maHocKy?: number, maMonHoc?: number): Promise<LopHocTrongKy[]> {
-  const params: Record<string, number> = {};
+export async function getLopHocTrongKys(
+  maHocKy?: number,
+  maMonHoc?: number,
+  chiLopMinhDay?: boolean,
+): Promise<LopHocTrongKy[]> {
+  const params: Record<string, number | boolean> = {};
   if (maHocKy) params.maHocKy = maHocKy;
   if (maMonHoc) params.maMonHoc = maMonHoc;
+  if (chiLopMinhDay) params.chiLopMinhDay = true;
   const res = await api.get<LopHocTrongKy[]>('/lop-hoc-ky', { params });
   return res.data;
 }

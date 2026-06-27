@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.GiangVien;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -15,10 +17,12 @@ public class GiangVienController : ControllerBase
     private const string MatKhauMacDinh = "123456a@B";
 
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public GiangVienController(AppDbContext db)
+    public GiangVienController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
     }
 
     private static GiangVienDto ToDto(GiangVien g) => new(
@@ -37,15 +41,42 @@ public class GiangVienController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<GiangVienDto>>> GetAll()
     {
-        var result = await _db.GiangViens
+        var query = _db.GiangViens
             .Include(g => g.BoMon).ThenInclude(b => b!.KhoaVien)
             .Include(g => g.KhoaVien)
             .Include(g => g.TaiKhoan)
             .Include(g => g.LopHocKyGiangViens)
-            .OrderBy(g => g.HoTen)
-            .ToListAsync();
+            .AsQueryable();
 
+        // GV: chỉ thấy giảng viên thuộc khoa viện mình (cho dropdown phân công lớp).
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+        {
+            var maKv = scope?.MaKhoaVien ?? -1;
+            query = query.Where(g => g.MaKhoaVien == maKv || (g.BoMon != null && g.BoMon.MaKhoaVien == maKv));
+        }
+
+        var result = await query.OrderBy(g => g.HoTen).ToListAsync();
         return Ok(result.Select(ToDto));
+    }
+
+    // Thông tin giảng viên đang đăng nhập (cho Topbar + Dashboard cổng giảng viên).
+    [HttpGet("me")]
+    public async Task<ActionResult<GiangVienDto>> GetMe()
+    {
+        var maTaiKhoanClaim = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        if (!int.TryParse(maTaiKhoanClaim, out var maTaiKhoan))
+            return Unauthorized();
+
+        var entity = await _db.GiangViens
+            .Include(g => g.BoMon).ThenInclude(b => b!.KhoaVien)
+            .Include(g => g.KhoaVien)
+            .Include(g => g.TaiKhoan)
+            .Include(g => g.LopHocKyGiangViens)
+            .FirstOrDefaultAsync(g => g.MaTaiKhoan == maTaiKhoan);
+
+        if (entity is null) return NotFound();
+        return Ok(ToDto(entity));
     }
 
     [HttpGet("{id:int}")]
@@ -86,6 +117,7 @@ public class GiangVienController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<GiangVienDto>> Create(CreateGiangVienRequest request)
     {
         var hoTen = request.HoTen.Trim();
@@ -149,6 +181,7 @@ public class GiangVienController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(int id, UpdateGiangVienRequest request)
     {
         var entity = await _db.GiangViens.FindAsync(id);
@@ -173,6 +206,7 @@ public class GiangVienController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(int id)
     {
         var entity = await _db.GiangViens

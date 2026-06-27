@@ -84,6 +84,53 @@ export const adminMenu: MenuItem[] = [
   },
 ];
 
+// Menu giảng viên: như admin nhưng giới hạn theo khoa viện (bỏ Khoa viện, Giảng viên,
+// Năm học & học kỳ, Đăng ký học phần, Thống kê, Nhật ký).
+export const teacherMenu: MenuItem[] = [
+  {
+    label: 'Tổng quan',
+    icon: LayoutDashboard,
+    path: '/teacher',
+  },
+  {
+    label: 'Quản lý danh mục',
+    icon: FolderKanban,
+    children: [
+      { label: 'Ngành học', path: '/teacher/danh-muc/nganh-hoc' },
+      { label: 'Bộ môn', path: '/teacher/danh-muc/bo-mon' },
+      { label: 'Môn học', path: '/teacher/danh-muc/mon-hoc' },
+      { label: 'Khung chương trình', path: '/teacher/danh-muc/khung-chuong-trinh' },
+    ],
+  },
+  {
+    label: 'Quản lý người dùng',
+    icon: Users,
+    children: [
+      { label: 'Sinh viên', path: '/teacher/nguoi-dung/sinh-vien' },
+      { label: 'Tài khoản', path: '/teacher/nguoi-dung/tai-khoan' },
+    ],
+  },
+  {
+    label: 'Quản lý học vụ',
+    icon: CalendarRange,
+    children: [
+      { label: 'Khoá học ngành', path: '/teacher/hoc-vu/khoa-hoc-nganh' },
+      { label: 'Lớp học theo kỳ', path: '/teacher/hoc-vu/lop-hoc-ky' },
+      { label: 'Nhập điểm', path: '/teacher/hoc-vu/diem' },
+    ],
+  },
+  {
+    label: 'Quản lý tài liệu',
+    icon: FileText,
+    path: '/teacher/tai-lieu',
+  },
+  {
+    label: 'Cài đặt',
+    icon: Settings,
+    path: '/teacher/cai-dat',
+  },
+];
+
 export const studentMenu: MenuItem[] = [
   {
     label: 'Tổng quan',

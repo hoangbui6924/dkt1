@@ -20,24 +20,47 @@ public class TaiLieuController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly IEmbeddingService _embedding;
+    private readonly ITeacherScopeService _scope;
 
-    public TaiLieuController(AppDbContext db, IEmbeddingService embedding)
+    public TaiLieuController(AppDbContext db, IEmbeddingService embedding, ITeacherScopeService scope)
     {
         _db = db;
         _embedding = embedding;
+        _scope = scope;
     }
 
     private static TaiLieuDto ToDto(TaiLieu t, int soChunk) => new(
         t.MaTaiLieu, t.TenFile, t.LoaiTaiLieu, t.MaMonHoc, t.MonHoc?.TenMonHoc,
         t.KichThuocBytes, t.SoTrang, soChunk, t.TrangThai, t.GhiChuXuLy, t.NgayTaiLen, t.TenNguoiTaiLen);
 
+    // Tài liệu GV quản lý = giáo trình của môn thuộc khoa viện mình (môn gắn trực tiếp hoặc qua bộ môn).
+    private async Task<bool> MonHocKhongHopLe(int? maMonHoc)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        if (scope?.MaKhoaVien == null || maMonHoc == null) return true;
+        var mon = await _db.MonHocs.Where(m => m.MaMonHoc == maMonHoc.Value)
+            .Select(m => new { m.MaKhoaVien, BoMonKv = m.BoMon != null ? m.BoMon.MaKhoaVien : null })
+            .FirstOrDefaultAsync();
+        if (mon == null) return true;
+        return (mon.MaKhoaVien ?? mon.BoMonKv) != scope.MaKhoaVien;
+    }
+
     [HttpGet]
-    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<TaiLieuDto>>> GetAll([FromQuery] string? loai, [FromQuery] int? maMonHoc)
     {
         var query = _db.TaiLieus.Include(t => t.MonHoc).AsQueryable();
         if (!string.IsNullOrWhiteSpace(loai)) query = query.Where(t => t.LoaiTaiLieu == loai);
         if (maMonHoc.HasValue) query = query.Where(t => t.MaMonHoc == maMonHoc.Value);
+
+        // GV: chỉ giáo trình của môn thuộc khoa viện mình.
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+        {
+            var maKv = scope?.MaKhoaVien ?? -1;
+            query = query.Where(t => t.LoaiTaiLieu == "GiaoTrinh" && t.MonHoc != null &&
+                (t.MonHoc.MaKhoaVien == maKv || (t.MonHoc.BoMon != null && t.MonHoc.BoMon.MaKhoaVien == maKv)));
+        }
 
         var list = await query.OrderByDescending(t => t.NgayTaiLen).ToListAsync();
         var soChunks = await _db.TaiLieuChunks
@@ -50,7 +73,6 @@ public class TaiLieuController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
     [RequestSizeLimit(50 * 1024 * 1024)]
     public async Task<ActionResult<TaiLieuDto>> Upload(
         [FromForm] IFormFile file, [FromForm] string loaiTaiLieu, [FromForm] int? maMonHoc)
@@ -64,6 +86,13 @@ public class TaiLieuController : ControllerBase
         if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
             file.ContentType != "application/pdf")
             return BadRequest(new { message = "Chỉ chấp nhận file PDF" });
+
+        // GV chỉ được tải lên giáo trình của môn thuộc khoa viện mình (không tải nội quy/sổ tay).
+        if (_scope.IsGiangVien(User))
+        {
+            if (loaiTaiLieu != "GiaoTrinh") return Forbid();
+            if (await MonHocKhongHopLe(maMonHoc)) return Forbid();
+        }
 
         if (loaiTaiLieu == "GiaoTrinh")
         {
@@ -150,11 +179,17 @@ public class TaiLieuController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(int id)
     {
         var taiLieu = await _db.TaiLieus.FirstOrDefaultAsync(t => t.MaTaiLieu == id);
         if (taiLieu is null) return NotFound();
+
+        // GV chỉ được xoá giáo trình của môn thuộc khoa viện mình.
+        if (_scope.IsGiangVien(User))
+        {
+            if (taiLieu.LoaiTaiLieu != "GiaoTrinh" || await MonHocKhongHopLe(taiLieu.MaMonHoc)) return Forbid();
+        }
+
         _db.TaiLieus.Remove(taiLieu); // chunks tự xoá theo cascade
         await _db.SaveChangesAsync();
         return NoContent();

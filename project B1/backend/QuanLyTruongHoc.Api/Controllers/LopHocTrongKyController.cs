@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.Common;
 using QuanLyTruongHoc.Application.DTOs.LopHocTrongKy;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -16,10 +17,26 @@ public class LopHocTrongKyController : ControllerBase
     private static readonly string[] LoaiHinhHopLe = { "Lý thuyết", "Thực hành" };
 
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public LopHocTrongKyController(AppDbContext db)
+    public LopHocTrongKyController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // Lớp thuộc khoa viện theo môn học (trực tiếp hoặc qua bộ môn). GV chỉ thao tác lớp thuộc khoa viện mình.
+    private async Task<bool> MonHocKhongHopLe(int maMonHoc)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        if (scope?.MaKhoaVien == null) return true;
+        var mon = await _db.MonHocs.Where(m => m.MaMonHoc == maMonHoc)
+            .Select(m => new { m.MaKhoaVien, BoMonKv = m.BoMon != null ? m.BoMon.MaKhoaVien : null })
+            .FirstOrDefaultAsync();
+        if (mon == null) return true;
+        var khoaVienHieuLuc = mon.MaKhoaVien ?? mon.BoMonKv;
+        return khoaVienHieuLuc != scope.MaKhoaVien;
     }
 
     private static LopHocTrongKyDto ToDto(Domain.Entities.LopHocTrongKy l)
@@ -51,11 +68,29 @@ public class LopHocTrongKyController : ControllerBase
             .Include(l => l.LopHocKyGiangViens).ThenInclude(g => g.GiangVien);
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<LopHocTrongKyDto>>> GetAll([FromQuery] int? maHocKy, [FromQuery] int? maMonHoc)
+    public async Task<ActionResult<IEnumerable<LopHocTrongKyDto>>> GetAll(
+        [FromQuery] int? maHocKy, [FromQuery] int? maMonHoc, [FromQuery] bool chiLopMinhDay = false)
     {
         var query = IncludeAll(_db.LopHocTrongKys.AsQueryable());
         if (maHocKy.HasValue) query = query.Where(l => l.MaHocKy == maHocKy.Value);
         if (maMonHoc.HasValue) query = query.Where(l => l.MaMonHoc == maMonHoc.Value);
+
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+        {
+            var maKv = scope?.MaKhoaVien ?? -1;
+            if (chiLopMinhDay)
+            {
+                // Trang Nhập điểm: chỉ lớp GV được phân công dạy (mọi khoa viện).
+                var maGv = scope?.MaGiangVien ?? -1;
+                query = query.Where(l => l.LopHocKyGiangViens.Any(g => g.MaGiangVien == maGv));
+            }
+            else
+            {
+                // Trang Lớp học theo kỳ: lớp có môn thuộc khoa viện GV.
+                query = query.Where(l => l.MonHoc!.MaKhoaVien == maKv || (l.MonHoc.BoMon != null && l.MonHoc.BoMon.MaKhoaVien == maKv));
+            }
+        }
 
         var result = await query.OrderBy(l => l.MonHoc!.TenMonHoc).ThenBy(l => l.TenLop).ToListAsync();
         return Ok(result.Select(ToDto));
@@ -66,6 +101,7 @@ public class LopHocTrongKyController : ControllerBase
     {
         var entity = await IncludeAll(_db.LopHocTrongKys.AsQueryable()).FirstOrDefaultAsync(l => l.MaLopHocKy == id);
         if (entity is null) return NotFound();
+        if (await MonHocKhongHopLe(entity.MaMonHoc)) return Forbid();
         return Ok(ToDto(entity));
     }
 
@@ -166,6 +202,8 @@ public class LopHocTrongKyController : ControllerBase
         if (request.SiSoToiDa <= 0)
             return BadRequest(new { message = "Sĩ số tối đa phải lớn hơn 0" });
 
+        if (await MonHocKhongHopLe(request.MaMonHoc)) return Forbid();
+
         var monHoc = await _db.MonHocs.FindAsync(request.MaMonHoc);
         if (monHoc is null)
             return BadRequest(new { message = "Môn học không tồn tại" });
@@ -242,6 +280,8 @@ public class LopHocTrongKyController : ControllerBase
             .FirstOrDefaultAsync(l => l.MaLopHocKy == id);
         if (entity is null) return NotFound();
 
+        if (await MonHocKhongHopLe(entity.MaMonHoc)) return Forbid();
+
         var ten = request.TenLop.Trim();
         if (string.IsNullOrWhiteSpace(ten))
             return BadRequest(new { message = "Tên lớp không được để trống" });
@@ -317,6 +357,8 @@ public class LopHocTrongKyController : ControllerBase
 
         if (entity is null) return NotFound();
 
+        if (await MonHocKhongHopLe(entity.MaMonHoc)) return Forbid();
+
         if (entity.DangKyLopHocs.Count > 0)
             return Conflict(new { message = "Không thể xoá: lớp học đã có sinh viên đăng ký" });
 
@@ -337,6 +379,8 @@ public class LopHocTrongKyController : ControllerBase
             .FirstOrDefaultAsync(l => l.MaLopHocKy == id);
 
         if (entity is null) return NotFound();
+
+        if (await MonHocKhongHopLe(entity.MaMonHoc)) return Forbid();
 
         var soSinhVien = entity.DangKyLopHocs.Count;
 

@@ -17,6 +17,7 @@ import { type GiangVien, getGiangViens } from '../../../services/giangVienServic
 import Modal from '../../../components/Modal';
 import SearchableSelect from '../../../components/SearchableSelect';
 import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
+import { usePortalBase } from '../../../hooks/usePortalBase';
 
 const ITEMS_PER_PAGE = 15;
 const LOAI_HINH_OPTIONS = ['Lý thuyết', 'Thực hành'] as const;
@@ -70,6 +71,7 @@ const EMPTY_FORM: LopHocTrongKyInput = {
 
 export default function LopHocTrongKyPage() {
   const navigate = useNavigate();
+  const portalBase = usePortalBase();
   const [hocKys, setHocKys] = useState<HocKy[]>([]);
   const [monHocs, setMonHocs] = useState<MonHoc[]>([]);
   const [giangViens, setGiangViens] = useState<GiangVien[]>([]);
@@ -564,7 +566,7 @@ export default function LopHocTrongKyPage() {
                           <button
                             type="button"
                             title="Xem danh sách sinh viên / nhập điểm"
-                            onClick={() => navigate(`/admin/hoc-vu/diem?maLopHocKy=${item.maLopHocKy}`)}
+                            onClick={() => navigate(`${portalBase}/hoc-vu/diem?maLopHocKy=${item.maLopHocKy}`)}
                             className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
                           >
                             <Users className="h-4 w-4" />

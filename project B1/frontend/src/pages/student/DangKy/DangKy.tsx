@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, CalendarPlus, RefreshCw, Trash2, Info, X, Sparkles, AlertTriangle } from 'lucide-react';
+import {
+  ClipboardList,
+  CalendarPlus,
+  RefreshCw,
+  Trash2,
+  Info,
+  X,
+  Sparkles,
+  AlertTriangle,
+  List,
+  CalendarDays,
+} from 'lucide-react';
 import {
   type HocKyDangKy,
   type LopDaDangKy,
@@ -72,6 +83,7 @@ export default function StudentDangKyPage() {
   const [chuongTrinh, setChuongTrinh] = useState<ChuongTrinhDangKy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [hienThiKetQua, setHienThiKetQua] = useState<'bang' | 'thoiKhoaBieu'>('bang');
 
   // filters
   const [hienThiToanBo, setHienThiToanBo] = useState(false);
@@ -371,65 +383,100 @@ export default function StudentDangKyPage() {
 
       {/* Panel: kết quả đăng ký */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
           <span className="text-lg font-semibold text-gray-700">Kết quả đăng ký học phần</span>
-          <span className="text-[15px] text-gray-600">
-            Đã đăng ký: <strong className="text-blue-600">{daDangKy.length}</strong> học phần ·{' '}
-            <strong className="text-blue-600">{tongTinChi}</strong> tín chỉ
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[15px] text-gray-600">
+              Đã đăng ký: <strong className="text-blue-600">{daDangKy.length}</strong> học phần ·{' '}
+              <strong className="text-blue-600">{tongTinChi}</strong> tín chỉ
+            </span>
+            <div className="flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1">
+              <button
+                type="button"
+                onClick={() => setHienThiKetQua('bang')}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium ${
+                  hienThiKetQua === 'bang' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <List className="h-3.5 w-3.5" /> Dạng bảng
+              </button>
+              <button
+                type="button"
+                onClick={() => setHienThiKetQua('thoiKhoaBieu')}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium ${
+                  hienThiKetQua === 'thoiKhoaBieu'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <CalendarDays className="h-3.5 w-3.5" /> Thời khoá biểu
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-[15px]">
-            <thead>
-              <tr className="bg-blue-50 text-left text-sm font-semibold uppercase tracking-wide text-gray-600">
-                <th className="px-4 py-3">Lớp học phần</th>
-                <th className="w-16 px-4 py-3">TC</th>
-                <th className="w-80 px-4 py-3">Thời gian & Địa điểm</th>
-                <th className="w-44 px-4 py-3">Giảng viên</th>
-                <th className="w-24 px-4 py-3">Đã ĐK</th>
-                <th className="w-32 px-4 py-3 text-center">Hành động</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {daDangKy.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
-                    Chưa đăng ký học phần nào
-                  </td>
+
+        {hienThiKetQua === 'bang' ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-[15px]">
+              <thead>
+                <tr className="bg-blue-50 text-left text-sm font-semibold uppercase tracking-wide text-gray-600">
+                  <th className="px-4 py-3">Lớp học phần</th>
+                  <th className="w-16 px-4 py-3">TC</th>
+                  <th className="w-80 px-4 py-3">Thời gian & Địa điểm</th>
+                  <th className="w-44 px-4 py-3">Giảng viên</th>
+                  <th className="w-24 px-4 py-3">Đã ĐK</th>
+                  <th className="w-32 px-4 py-3 text-center">Hành động</th>
                 </tr>
-              )}
-              {daDangKySapXep.map((l) => (
-                <tr key={l.maDangKy} className="hover:bg-gray-50/60">
-                  <td
-                    className={`px-4 py-3 font-medium ${
-                      loaiMonHocMap.get(l.maMonHoc) === 'Tự chọn' ? 'text-amber-600' : 'text-gray-900'
-                    }`}
-                  >
-                    {l.tenMonHoc} ({l.tenLop})
-                    <span className="ml-1.5 text-sm text-gray-400">· {l.loaiHinh}</span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">{l.soTinChi}</td>
-                  <td className="px-4 py-3 text-gray-700">
-                    <BuoiHocList buoiHocs={l.buoiHocs} />
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">{l.tenGiangVien ?? '-'}</td>
-                  <td className="px-4 py-3 text-gray-700">
-                    {l.soLuongDaDangKy}/{l.siSoToiDa}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleHuy(l)}
-                      className="inline-flex items-center gap-1.5 rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {daDangKy.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                      Chưa đăng ký học phần nào
+                    </td>
+                  </tr>
+                )}
+                {daDangKySapXep.map((l) => (
+                  <tr key={l.maDangKy} className="hover:bg-gray-50/60">
+                    <td
+                      className={`px-4 py-3 font-medium ${
+                        loaiMonHocMap.get(l.maMonHoc) === 'Tự chọn' ? 'text-amber-600' : 'text-gray-900'
+                      }`}
                     >
-                      <Trash2 className="h-4 w-4" /> Huỷ
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      {l.tenMonHoc} ({l.tenLop})
+                      <span className="ml-1.5 text-sm text-gray-400">· {l.loaiHinh}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{l.soTinChi}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      <BuoiHocList buoiHocs={l.buoiHocs} />
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{l.tenGiangVien ?? '-'}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {l.soLuongDaDangKy}/{l.siSoToiDa}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleHuy(l)}
+                        className="inline-flex items-center gap-1.5 rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" /> Huỷ
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-4">
+            {daDangKy.length === 0 ? (
+              <p className="py-10 text-center text-[15px] text-gray-400">Chưa đăng ký học phần nào</p>
+            ) : (
+              <ThoiKhoaBieuGrid monHocs={daDangKySapXep} />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Filters + chương trình */}

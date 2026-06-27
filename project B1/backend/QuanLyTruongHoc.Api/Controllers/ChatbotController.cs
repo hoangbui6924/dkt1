@@ -37,11 +37,12 @@ public class ChatbotController : ControllerBase
     private readonly IMemoryCache _cache;
     private readonly IGoiYLichService _goiYLich;
     private readonly IWebSearchService _webSearch;
+    private readonly IHocVuRiskService _hocVuRisk;
     private readonly string _systemPrompt;
     private HanhDongCho? _hanhDongCho; // hành động GHI mà tool đề xuất trong request này (chatbot KHÔNG tự thực thi)
 
     public ChatbotController(AppDbContext db, IEmbeddingService embedding, IAiChatService aiChat,
-        IMemoryCache cache, IGoiYLichService goiYLich, IWebSearchService webSearch, IConfiguration config)
+        IMemoryCache cache, IGoiYLichService goiYLich, IWebSearchService webSearch, IHocVuRiskService hocVuRisk, IConfiguration config)
     {
         _db = db;
         _embedding = embedding;
@@ -49,6 +50,7 @@ public class ChatbotController : ControllerBase
         _cache = cache;
         _goiYLich = goiYLich;
         _webSearch = webSearch;
+        _hocVuRisk = hocVuRisk;
         // Config-first (SOTA): cho override system prompt (STATIC) qua config "Chatbot:SystemPrompt"
         // (env/appsettings) mà không cần build lại; mặc định dùng prompt trong code. Ngữ cảnh DYNAMIC
         // (tài liệu/dữ liệu hệ thống) tách riêng ở message user mỗi request (xem ChuanBiHoiThoaiAsync).
@@ -99,6 +101,13 @@ public class ChatbotController : ControllerBase
                 properties = new { query = new { type = "string", description = "Từ khoá/truy vấn tìm kiếm, ngắn gọn rõ ràng." } },
                 required = new[] { "query" },
             }),
+        new ChatTool(
+            "xem_rui_ro_hoc_tap",
+            "Đánh giá NGUY CƠ TRƯỢT MÔN hoặc kết quả học tập SA SÚT của CHÍNH sinh viên đang đăng nhập, dựa trên " +
+            "xu hướng GPA qua các kỳ + dữ liệu lịch sử các môn đang học, kèm gợi ý lộ trình khắc phục. " +
+            "Dùng khi sinh viên hỏi 'mình có nguy cơ trượt môn nào không', 'kết quả học tập của mình có ổn không', " +
+            "'mình có bị cảnh báo học vụ không', 'mình nên làm gì để cải thiện điểm'.",
+            new { type = "object", properties = new { } }),
         new ChatTool(
             "dang_ky_lop_hoc",
             "ĐĂNG KÝ một lớp học phần cho CHÍNH sinh viên đang đăng nhập, khi sinh viên đã CHỌN RÕ một lớp cụ thể " +
@@ -319,6 +328,7 @@ public class ChatbotController : ControllerBase
             "goi_y_lich_hoc" => await ToolXepLichAsync(sv, thamSoJson),
             "xem_lich_da_dang_ky" => await ToolLichDaDangKyAsync(sv),
             "xem_chuong_trinh_ky_nay" => await ToolChuongTrinhKyNayAsync(sv),
+            "xem_rui_ro_hoc_tap" => await _hocVuRisk.TomTatRuiRoAsync(sv.MaSinhVien),
             "dang_ky_lop_hoc" => await ToolDangKyLopHocAsync(sv, thamSoJson),
             _ => "Công cụ không được hỗ trợ.",
         };

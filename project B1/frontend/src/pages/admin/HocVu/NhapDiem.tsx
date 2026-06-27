@@ -7,6 +7,7 @@ import {
 } from '../../../services/lopHocTrongKyService';
 import { type HocKy, getHocKys } from '../../../services/hocKyService';
 import { type SinhVienTrongLopDiem, type LopDiemInfo, getLopDiem, nhapDiem } from '../../../services/diemHocPhanService';
+import { usePortalBase } from '../../../hooks/usePortalBase';
 
 function DiemInput({
   value,
@@ -55,6 +56,7 @@ function DiemInput({
 
 export default function NhapDiemPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const laGiangVien = usePortalBase() === '/teacher';
   const [hocKys, setHocKys] = useState<HocKy[]>([]);
   const [lops, setLops] = useState<LopHocTrongKy[]>([]);
   const [maHocKy, setMaHocKy] = useState<number | ''>('');
@@ -84,10 +86,10 @@ export default function NhapDiemPage() {
       setLops([]);
       return;
     }
-    getLopHocTrongKys(Number(maHocKy))
+    getLopHocTrongKys(Number(maHocKy), undefined, laGiangVien)
       .then(setLops)
       .catch(() => setError('Không thể tải danh sách lớp học phần'));
-  }, [maHocKy]);
+  }, [maHocKy, laGiangVien]);
 
   async function loadLopDiem(id: number) {
     setLoadingLop(true);

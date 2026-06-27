@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.MonHoc;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -15,10 +16,26 @@ public class MonHocController : ControllerBase
     private static readonly string[] LoaiMonHocHopLe = { "Bắt buộc", "Tự chọn" };
 
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public MonHocController(AppDbContext db)
+    public MonHocController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // Khoa viện hiệu lực của môn = MaKhoaVien trực tiếp, hoặc khoa viện của bộ môn. GV chỉ thao tác trong khoa viện mình.
+    private async Task<bool> MonHocKhongHopLe(int? maBoMon, int? maKhoaVien)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        if (scope?.MaKhoaVien == null) return true;
+
+        int? khoaVienHieuLuc = maKhoaVien;
+        if (maBoMon.HasValue)
+            khoaVienHieuLuc = await _db.BoMons.Where(b => b.MaBoMon == maBoMon.Value).Select(b => b.MaKhoaVien).FirstOrDefaultAsync();
+
+        return khoaVienHieuLuc != scope.MaKhoaVien;
     }
 
     private static MonHocDto ToDto(MonHoc m) => new(
@@ -37,14 +54,22 @@ public class MonHocController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<MonHocDto>>> GetAll()
     {
-        var result = await _db.MonHocs
+        var query = _db.MonHocs
             .Include(m => m.BoMon)
             .Include(m => m.KhoaVien)
             .Include(m => m.MonHocTienQuyet)
             .Include(m => m.LopHocTrongKys)
-            .OrderBy(m => m.TenMonHoc)
-            .ToListAsync();
+            .AsQueryable();
 
+        // GV: môn thuộc khoa viện mình (trực tiếp hoặc qua bộ môn).
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+        {
+            var maKv = scope?.MaKhoaVien ?? -1;
+            query = query.Where(m => m.MaKhoaVien == maKv || (m.BoMon != null && m.BoMon.MaKhoaVien == maKv));
+        }
+
+        var result = await query.OrderBy(m => m.TenMonHoc).ToListAsync();
         return Ok(result.Select(ToDto));
     }
 
@@ -59,6 +84,7 @@ public class MonHocController : ControllerBase
             .FirstOrDefaultAsync(m => m.MaMonHoc == id);
 
         if (entity is null) return NotFound();
+        if (await MonHocKhongHopLe(entity.MaBoMon, entity.MaKhoaVien)) return Forbid();
         return Ok(ToDto(entity));
     }
 
@@ -102,6 +128,8 @@ public class MonHocController : ControllerBase
         if (noiThuocError != null)
             return BadRequest(new { message = noiThuocError });
 
+        if (await MonHocKhongHopLe(request.MaBoMon, request.MaKhoaVien)) return Forbid();
+
         var exists = await _db.MonHocs.AnyAsync(m =>
             m.TenMonHoc == ten && m.MaBoMon == request.MaBoMon && m.MaKhoaVien == request.MaKhoaVien);
         if (exists)
@@ -138,6 +166,10 @@ public class MonHocController : ControllerBase
     {
         var entity = await _db.MonHocs.FindAsync(id);
         if (entity is null) return NotFound();
+
+        // GV: cả môn cũ và nơi-thuộc mới đều phải nằm trong khoa viện của GV.
+        if (await MonHocKhongHopLe(entity.MaBoMon, entity.MaKhoaVien) || await MonHocKhongHopLe(request.MaBoMon, request.MaKhoaVien))
+            return Forbid();
 
         var ten = request.TenMonHoc.Trim();
         if (string.IsNullOrWhiteSpace(ten))
@@ -188,6 +220,8 @@ public class MonHocController : ControllerBase
             .FirstOrDefaultAsync(m => m.MaMonHoc == id);
 
         if (entity is null) return NotFound();
+
+        if (await MonHocKhongHopLe(entity.MaBoMon, entity.MaKhoaVien)) return Forbid();
 
         if (entity.LopHocTrongKys.Count > 0 || entity.MonHocThuocKhungChuongTrinhs.Count > 0)
             return Conflict(new { message = "Không thể xoá: môn học đang có lớp học theo kỳ hoặc khung chương trình liên kết" });

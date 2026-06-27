@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.NhomLopNganh;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -13,10 +14,31 @@ namespace QuanLyTruongHoc.Api.Controllers;
 public class NhomLopNganhController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public NhomLopNganhController(AppDbContext db)
+    public NhomLopNganhController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // Nhóm lớp -> khoá học ngành -> ngành -> khoa viện. GV chỉ thao tác trong khoa viện mình.
+    private async Task<bool> KhoaHocNganhKhongHopLe(int maKhoaHocNganh)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        var maKv = await _db.KhoaHocNganhs
+            .Where(k => k.MaKhoaHocNganh == maKhoaHocNganh)
+            .Select(k => (int?)k.NganhHoc!.MaKhoaVien)
+            .FirstOrDefaultAsync();
+        return scope?.MaKhoaVien != maKv;
+    }
+
+    private async Task<bool> NhomLopKhongHopLe(int maNhomLop)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var maKhoaHocNganh = await _db.NhomLopNganhs.Where(n => n.MaNhomLop == maNhomLop).Select(n => (int?)n.MaKhoaHocNganh).FirstOrDefaultAsync();
+        return maKhoaHocNganh == null || await KhoaHocNganhKhongHopLe(maKhoaHocNganh.Value);
     }
 
     private static NhomLopNganhDto ToDto(NhomLopNganh n) => new(
@@ -40,6 +62,10 @@ public class NhomLopNganhController : ControllerBase
         if (maKhoaHocNganh.HasValue)
             query = query.Where(n => n.MaKhoaHocNganh == maKhoaHocNganh.Value);
 
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+            query = query.Where(n => n.KhoaHocNganh!.NganhHoc!.MaKhoaVien == (scope != null ? scope.MaKhoaVien : -1));
+
         var result = await query.OrderBy(n => n.TenNhomLop).ToListAsync();
 
         return Ok(result.Select(ToDto));
@@ -55,12 +81,15 @@ public class NhomLopNganhController : ControllerBase
             .FirstOrDefaultAsync(n => n.MaNhomLop == id);
 
         if (entity is null) return NotFound();
+        if (await KhoaHocNganhKhongHopLe(entity.MaKhoaHocNganh)) return Forbid();
         return Ok(ToDto(entity));
     }
 
     [HttpPost]
     public async Task<ActionResult<NhomLopNganhDto>> Create(CreateNhomLopNganhRequest request)
     {
+        if (await KhoaHocNganhKhongHopLe(request.MaKhoaHocNganh)) return Forbid();
+
         var ten = request.TenNhomLop.Trim();
         if (string.IsNullOrWhiteSpace(ten))
             return BadRequest(new { message = "Tên nhóm lớp không được để trống" });
@@ -86,6 +115,9 @@ public class NhomLopNganhController : ControllerBase
     {
         var entity = await _db.NhomLopNganhs.FindAsync(id);
         if (entity is null) return NotFound();
+
+        if (await KhoaHocNganhKhongHopLe(entity.MaKhoaHocNganh) || await KhoaHocNganhKhongHopLe(request.MaKhoaHocNganh))
+            return Forbid();
 
         var ten = request.TenNhomLop.Trim();
         if (string.IsNullOrWhiteSpace(ten))
@@ -116,6 +148,8 @@ public class NhomLopNganhController : ControllerBase
 
         if (entity is null) return NotFound();
 
+        if (await KhoaHocNganhKhongHopLe(entity.MaKhoaHocNganh)) return Forbid();
+
         if (entity.SinhViens.Count > 0)
             return Conflict(new { message = "Không thể xoá: nhóm lớp đang có sinh viên liên kết" });
 
@@ -130,6 +164,7 @@ public class NhomLopNganhController : ControllerBase
     {
         var nhomLopExists = await _db.NhomLopNganhs.AnyAsync(n => n.MaNhomLop == id);
         if (!nhomLopExists) return NotFound();
+        if (await NhomLopKhongHopLe(id)) return Forbid();
 
         var result = await _db.SinhViens
             .Where(s => s.MaNhomLop == id)
@@ -145,6 +180,7 @@ public class NhomLopNganhController : ControllerBase
     {
         var nhomLop = await _db.NhomLopNganhs.FindAsync(id);
         if (nhomLop is null) return NotFound();
+        if (await KhoaHocNganhKhongHopLe(nhomLop.MaKhoaHocNganh)) return Forbid();
 
         var result = await _db.SinhViens
             .Where(s => s.MaKhoaHocNganh == nhomLop.MaKhoaHocNganh && s.MaNhomLop == null)
@@ -160,6 +196,7 @@ public class NhomLopNganhController : ControllerBase
     {
         var nhomLop = await _db.NhomLopNganhs.FindAsync(id);
         if (nhomLop is null) return NotFound();
+        if (await KhoaHocNganhKhongHopLe(nhomLop.MaKhoaHocNganh)) return Forbid();
 
         var sinhVien = await _db.SinhViens.FindAsync(request.MaSinhVien);
         if (sinhVien is null)
@@ -180,6 +217,8 @@ public class NhomLopNganhController : ControllerBase
     [HttpDelete("{id:int}/sinh-vien/{maSinhVien:int}")]
     public async Task<IActionResult> RemoveSinhVien(int id, int maSinhVien)
     {
+        if (await NhomLopKhongHopLe(id)) return Forbid();
+
         var sinhVien = await _db.SinhViens.FirstOrDefaultAsync(s => s.MaSinhVien == maSinhVien && s.MaNhomLop == id);
         if (sinhVien is null) return NotFound();
 
@@ -194,6 +233,7 @@ public class NhomLopNganhController : ControllerBase
     {
         var nhomLop = await _db.NhomLopNganhs.FindAsync(id);
         if (nhomLop is null) return NotFound();
+        if (await KhoaHocNganhKhongHopLe(nhomLop.MaKhoaHocNganh)) return Forbid();
 
         var loi = new List<ImportSinhVienVaoNhomErrorDto>();
         var thanhCong = 0;
@@ -243,6 +283,7 @@ public class NhomLopNganhController : ControllerBase
             .Include(n => n.SinhViens)
             .FirstOrDefaultAsync(n => n.MaNhomLop == id);
         if (entity is null) return NotFound();
+        if (await KhoaHocNganhKhongHopLe(entity.MaKhoaHocNganh)) return Forbid();
 
         if (request.MaGiangVien.HasValue)
         {

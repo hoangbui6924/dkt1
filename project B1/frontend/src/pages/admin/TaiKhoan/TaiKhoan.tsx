@@ -170,10 +170,10 @@ export default function TaiKhoanPage() {
               <th className="w-12 border-b border-r border-gray-200 px-2 py-2 text-center text-sm font-semibold text-gray-600">
                 No.
               </th>
-              <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+              <th className="w-40 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                 Tên đăng nhập
               </th>
-              <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
+              <th className="w-150 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">
                 Liên kết
               </th>
               <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left text-sm font-semibold text-gray-600">

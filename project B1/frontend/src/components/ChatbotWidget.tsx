@@ -1,5 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send, Bot, Copy, Check, RotateCcw, Trash2, CalendarPlus, ShieldCheck, ShieldAlert } from 'lucide-react';
+import {
+  MessageCircle,
+  X,
+  Send,
+  Bot,
+  Copy,
+  Check,
+  RotateCcw,
+  Trash2,
+  CalendarPlus,
+  ShieldCheck,
+  ShieldAlert,
+  Maximize2,
+  Minimize2,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { hoiChatbotStream, type NguonTraLoi, type HanhDongCho } from '../services/chatbotService';
@@ -35,6 +49,7 @@ const LOI_CHAO: ChatMessage = {
 
 export default function ChatbotWidget() {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false); // phóng to khung chat khi khung mặc định hơi bé
   const [messages, setMessages] = useState<ChatMessage[]>([LOI_CHAO]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -167,14 +182,29 @@ export default function ChatbotWidget() {
 
       {/* Khung chat */}
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 flex h-[560px] max-h-[80vh] w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div
+          className={`fixed bottom-6 right-6 z-50 flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all duration-200 ${
+            expanded
+              ? 'h-[85vh] max-h-[860px] w-[640px] max-w-[calc(100vw-2rem)]'
+              : 'h-[560px] max-h-[80vh] w-[400px] max-w-[calc(100vw-2rem)]'
+          }`}
+        >
           {/* Header */}
           <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <Bot className="h-5 w-5" />
-              <span className="font-semibold">Trợ lý ảo sinh viên</span>
+              <span className="font-semibold">AI Support</span>
             </div>
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                aria-label={expanded ? 'Thu nhỏ khung chat' : 'Phóng to khung chat'}
+                title={expanded ? 'Thu nhỏ khung chat' : 'Phóng to khung chat'}
+                className="rounded p-1 transition hover:bg-white/20"
+              >
+                {expanded ? <Minimize2 className="h-[18px] w-[18px]" /> : <Maximize2 className="h-[18px] w-[18px]" />}
+              </button>
               <button
                 type="button"
                 onClick={clearChat}

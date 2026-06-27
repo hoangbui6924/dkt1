@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.KhoaVien;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -13,16 +14,25 @@ namespace QuanLyTruongHoc.Api.Controllers;
 public class KhoaVienController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public KhoaVienController(AppDbContext db)
+    public KhoaVienController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<KhoaVienDto>>> GetAll()
     {
-        var result = await _db.KhoaViens
+        var query = _db.KhoaViens.AsQueryable();
+
+        // GV: chỉ thấy khoa viện của chính mình (để các dropdown form dùng lại đúng phạm vi).
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+            query = query.Where(k => k.MaKhoaVien == (scope != null ? scope.MaKhoaVien : -1));
+
+        var result = await query
             .OrderBy(k => k.TenKhoaVien)
             .Select(k => new KhoaVienDto(
                 k.MaKhoaVien,
@@ -47,6 +57,7 @@ public class KhoaVienController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<KhoaVienDto>> Create(CreateKhoaVienRequest request)
     {
         var ten = request.TenKhoaVien.Trim();
@@ -66,6 +77,7 @@ public class KhoaVienController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(int id, UpdateKhoaVienRequest request)
     {
         var entity = await _db.KhoaViens.FindAsync(id);
@@ -86,6 +98,7 @@ public class KhoaVienController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(int id)
     {
         var entity = await _db.KhoaViens

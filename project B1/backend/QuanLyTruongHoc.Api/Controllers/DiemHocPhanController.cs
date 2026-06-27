@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.Common;
 using QuanLyTruongHoc.Application.DTOs.DiemHocPhan;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -14,10 +15,22 @@ namespace QuanLyTruongHoc.Api.Controllers;
 public class DiemHocPhanController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public DiemHocPhanController(AppDbContext db)
+    public DiemHocPhanController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // Nhập điểm: GV chỉ được thao tác lớp mình được phân công dạy (sinh viên ngành nào cũng được).
+    private async Task<bool> LopKhongPhaiCuaToi(int maLopHocKy)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        var maGv = scope?.MaGiangVien ?? -1;
+        var coDay = await _db.LopHocKyGiangViens.AnyAsync(g => g.MaLopHocKy == maLopHocKy && g.MaGiangVien == maGv);
+        return !coDay;
     }
 
     private static SinhVienTrongLopDiemDto ToDto(DangKyLopHoc d)
@@ -42,6 +55,8 @@ public class DiemHocPhanController : ControllerBase
             .FirstOrDefaultAsync(l => l.MaLopHocKy == maLopHocKy);
         if (lop is null) return NotFound();
 
+        if (await LopKhongPhaiCuaToi(maLopHocKy)) return Forbid();
+
         var dangKys = await _db.DangKyLopHocs
             .Where(d => d.MaLopHocKy == maLopHocKy)
             .Include(d => d.SinhVien)
@@ -63,6 +78,8 @@ public class DiemHocPhanController : ControllerBase
             .Include(d => d.DiemHocPhan)
             .FirstOrDefaultAsync(d => d.MaDangKy == maDangKy);
         if (dangKy is null) return NotFound();
+
+        if (await LopKhongPhaiCuaToi(dangKy.MaLopHocKy)) return Forbid();
 
         if (request.DiemX.HasValue && (request.DiemX < 0 || request.DiemX > 10))
             return BadRequest(new { message = "Điểm X phải trong khoảng 0-10" });

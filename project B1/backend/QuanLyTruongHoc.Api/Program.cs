@@ -25,6 +25,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGoiYLichService, GoiYLichService>();
+builder.Services.AddScoped<ITeacherScopeService, TeacherScopeService>();
+builder.Services.AddScoped<IHocVuRiskService, HocVuRiskService>();
 
 builder.Services.Configure<NvidiaAiSettings>(builder.Configuration.GetSection("NvidiaAi"));
 builder.Services.AddHttpClient<IAiChatService, NvidiaAiChatService>();

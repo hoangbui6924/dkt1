@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.SinhVien;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -16,10 +17,24 @@ public class SinhVienController : ControllerBase
     private const string MatKhauMacDinh = "123456a@B";
 
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public SinhVienController(AppDbContext db)
+    public SinhVienController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // SV thuộc khoa viện qua KhoaHocNganh -> NganhHoc -> MaKhoaVien. GV chỉ quản lý SV khoa viện mình.
+    private async Task<bool> KhoaHocNganhKhongHopLe(int maKhoaHocNganh)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        var maKv = await _db.KhoaHocNganhs
+            .Where(k => k.MaKhoaHocNganh == maKhoaHocNganh)
+            .Select(k => (int?)k.NganhHoc!.MaKhoaVien)
+            .FirstOrDefaultAsync();
+        return scope?.MaKhoaVien != maKv;
     }
 
     private static SinhVienDto ToDto(Domain.Entities.SinhVien s) => new(
@@ -48,10 +63,13 @@ public class SinhVienController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<SinhVienDto>>> GetAll()
     {
-        var result = await IncludeAll(_db.SinhViens.AsQueryable())
-            .OrderBy(s => s.HoTen)
-            .ToListAsync();
+        var query = IncludeAll(_db.SinhViens.AsQueryable());
 
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+            query = query.Where(s => s.KhoaHocNganh!.NganhHoc!.MaKhoaVien == (scope != null ? scope.MaKhoaVien : -1));
+
+        var result = await query.OrderBy(s => s.HoTen).ToListAsync();
         return Ok(result.Select(ToDto));
     }
 
@@ -76,12 +94,15 @@ public class SinhVienController : ControllerBase
             .FirstOrDefaultAsync(s => s.MaSinhVien == id);
 
         if (entity is null) return NotFound();
+        if (await KhoaHocNganhKhongHopLe(entity.MaKhoaHocNganh)) return Forbid();
         return Ok(ToDto(entity));
     }
 
     [HttpPost]
     public async Task<ActionResult<SinhVienDto>> Create(CreateSinhVienRequest request)
     {
+        if (await KhoaHocNganhKhongHopLe(request.MaKhoaHocNganh)) return Forbid();
+
         var maSoSV = request.MaSoSV.Trim();
         if (string.IsNullOrWhiteSpace(maSoSV))
             return BadRequest(new { message = "Mã số sinh viên không được để trống" });
@@ -157,6 +178,8 @@ public class SinhVienController : ControllerBase
     [HttpPost("import")]
     public async Task<ActionResult<ImportSinhVienResultDto>> Import(ImportSinhVienRequest request)
     {
+        if (await KhoaHocNganhKhongHopLe(request.MaKhoaHocNganh)) return Forbid();
+
         var khoaHocNganh = await _db.KhoaHocNganhs.FindAsync(request.MaKhoaHocNganh);
         if (khoaHocNganh is null)
             return BadRequest(new { message = "Khoá học ngành không tồn tại" });
@@ -243,6 +266,10 @@ public class SinhVienController : ControllerBase
         var entity = await _db.SinhViens.FindAsync(id);
         if (entity is null) return NotFound();
 
+        // GV: SV hiện tại và khoá học ngành mới đều phải thuộc khoa viện của GV.
+        if (await KhoaHocNganhKhongHopLe(entity.MaKhoaHocNganh) || await KhoaHocNganhKhongHopLe(request.MaKhoaHocNganh))
+            return Forbid();
+
         var hoTen = request.HoTen.Trim();
         if (string.IsNullOrWhiteSpace(hoTen))
             return BadRequest(new { message = "Họ tên không được để trống" });
@@ -279,6 +306,8 @@ public class SinhVienController : ControllerBase
             .FirstOrDefaultAsync(s => s.MaSinhVien == id);
 
         if (entity is null) return NotFound();
+
+        if (await KhoaHocNganhKhongHopLe(entity.MaKhoaHocNganh)) return Forbid();
 
         if (entity.DangKyLopHocs.Count > 0 || entity.KetQuaHocTapKys.Count > 0)
             return Conflict(new { message = "Không thể xoá: sinh viên đang có dữ liệu đăng ký học phần hoặc kết quả học tập" });

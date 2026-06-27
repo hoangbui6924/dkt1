@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Award, Layers, BookOpen, ClipboardList, CalendarPlus, ArrowRight } from 'lucide-react';
 import { type SinhVien, getSinhVienMe } from '../../../services/sinhVienService';
-import './Home.css';
+import '../../../components/Dashboard.css';
 
 export default function StudentHome() {
   const navigate = useNavigate();
@@ -57,17 +57,17 @@ export default function StudentHome() {
   ];
 
   return (
-    <div className="sd-dashboard">
+    <div className="dash-dashboard">
       {loading && <p style={{ color: 'var(--text-muted)' }}>Đang tải...</p>}
       {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
 
       {sinhVien && (
         <>
-          <div className="sd-welcome">
-            <div className="sd-avatar">
+          <div className="dash-welcome">
+            <div className="dash-avatar">
               <GraduationCap size={28} />
             </div>
-            <div className="sd-welcome-info">
+            <div className="dash-welcome-info">
               <h1>Xin chào, {sinhVien.hoTen} 👋</h1>
               <p>
                 {sinhVien.maSoSV} · {sinhVien.tenNganh} · {sinhVien.tenKhoaVien}
@@ -75,30 +75,30 @@ export default function StudentHome() {
             </div>
           </div>
 
-          <div className="sd-stat-grid">
+          <div className="dash-stat-grid">
             {stats.map((s) => {
               const Icon = s.icon;
               return (
-                <div className="sd-stat-card" key={s.label}>
-                  <div className={`sd-stat-icon sd-stat-icon-${s.accent}`}>
+                <div className="dash-stat-card" key={s.label}>
+                  <div className={`dash-stat-icon dash-stat-icon-${s.accent}`}>
                     <Icon size={22} />
                   </div>
                   <div>
-                    <div className="sd-stat-value">{s.value}</div>
-                    <div className="sd-stat-label">{s.label}</div>
+                    <div className="dash-stat-value">{s.value}</div>
+                    <div className="dash-stat-label">{s.label}</div>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <h2 className="sd-section-title">Chức năng</h2>
-          <div className="sd-feature-grid">
+          <h2 className="dash-section-title">Chức năng</h2>
+          <div className="dash-feature-grid">
             {modules.map((m) => {
               const Icon = m.icon;
               return (
                 <div
-                  className="sd-feature-card"
+                  className="dash-feature-card"
                   key={m.title}
                   onClick={() => navigate(m.path)}
                   style={
@@ -110,13 +110,13 @@ export default function StudentHome() {
                   }
                 >
                   <div>
-                    <div className="sd-feature-icon" style={{ background: m.color }}>
+                    <div className="dash-feature-icon" style={{ background: m.color }}>
                       <Icon size={22} />
                     </div>
                     <h3>{m.title}</h3>
                     <p>{m.desc}</p>
                   </div>
-                  <span className="sd-feature-arrow" style={{ color: m.color }}>
+                  <span className="dash-feature-arrow" style={{ color: m.color }}>
                     Truy cập <ArrowRight size={14} />
                   </span>
                 </div>

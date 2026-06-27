@@ -21,8 +21,10 @@ import StudentKhungChuongTrinh from './pages/student/KhungChuongTrinh/KhungChuon
 import StudentDangKy from './pages/student/DangKy/DangKy';
 import StudentKetQuaHocTap from './pages/student/KetQuaHocTap/KetQuaHocTap';
 import StudentTaiLieu from './pages/student/TaiLieu/TaiLieu';
+import TeacherHome from './pages/teacher/Home/Home';
 import AdminLayout from './components/layout/AdminLayout';
 import StudentLayout from './components/layout/StudentLayout';
+import TeacherLayout from './components/layout/TeacherLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import ComingSoon from './components/ComingSoon';
 import { useAuth } from './context/AuthContext';
@@ -30,7 +32,9 @@ import { useAuth } from './context/AuthContext';
 function RootRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.tenQuyen === 'SinhVien' ? '/student' : '/admin'} replace />;
+  if (user.tenQuyen === 'SinhVien') return <Navigate to="/student" replace />;
+  if (user.tenQuyen === 'GiangVien') return <Navigate to="/teacher" replace />;
+  return <Navigate to="/admin" replace />;
 }
 
 export default function App() {
@@ -61,6 +65,29 @@ export default function App() {
         <Route path="hoc-vu/khoa-hoc-nganh" element={<KhoaHocNganh />} />
         <Route path="hoc-vu/lop-hoc-ky" element={<LopHocTrongKy />} />
         <Route path="hoc-vu/dang-ky" element={<DangKyDot />} />
+        <Route path="hoc-vu/diem" element={<NhapDiem />} />
+        <Route path="tai-lieu" element={<TaiLieu />} />
+        <Route path="*" element={<ComingSoon />} />
+      </Route>
+
+      <Route
+        path="/teacher"
+        element={
+          <ProtectedRoute>
+            <TeacherLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<TeacherHome />} />
+        <Route path="danh-muc/nganh-hoc" element={<NganhHoc />} />
+        <Route path="danh-muc/bo-mon" element={<BoMon />} />
+        <Route path="danh-muc/mon-hoc" element={<MonHoc />} />
+        <Route path="danh-muc/khung-chuong-trinh" element={<KhungChuongTrinh />} />
+        <Route path="danh-muc/khung-chuong-trinh/:id" element={<KhungChuongTrinhDetail />} />
+        <Route path="nguoi-dung/sinh-vien" element={<SinhVien />} />
+        <Route path="nguoi-dung/tai-khoan" element={<TaiKhoan />} />
+        <Route path="hoc-vu/khoa-hoc-nganh" element={<KhoaHocNganh />} />
+        <Route path="hoc-vu/lop-hoc-ky" element={<LopHocTrongKy />} />
         <Route path="hoc-vu/diem" element={<NhapDiem />} />
         <Route path="tai-lieu" element={<TaiLieu />} />
         <Route path="*" element={<ComingSoon />} />

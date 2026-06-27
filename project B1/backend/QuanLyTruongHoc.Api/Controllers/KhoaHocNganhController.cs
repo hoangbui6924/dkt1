@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.KhoaHocNganh;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -13,10 +14,21 @@ namespace QuanLyTruongHoc.Api.Controllers;
 public class KhoaHocNganhController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public KhoaHocNganhController(AppDbContext db)
+    public KhoaHocNganhController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // Khoá học ngành thuộc 1 ngành -> khoa viện. GV chỉ thao tác trong khoa viện mình.
+    private async Task<bool> NganhKhongHopLe(int maNganhHoc)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        var maKv = await _db.NganhHocs.Where(n => n.MaNganh == maNganhHoc).Select(n => (int?)n.MaKhoaVien).FirstOrDefaultAsync();
+        return scope?.MaKhoaVien != maKv;
     }
 
     [HttpGet]
@@ -29,6 +41,10 @@ public class KhoaHocNganhController : ControllerBase
 
         if (maNganhHoc.HasValue)
             query = query.Where(k => k.MaNganhHoc == maNganhHoc.Value);
+
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+            query = query.Where(k => k.NganhHoc!.MaKhoaVien == (scope != null ? scope.MaKhoaVien : -1));
 
         var result = await query
             .OrderByDescending(k => k.TenKhoaHoc)
@@ -63,12 +79,15 @@ public class KhoaHocNganhController : ControllerBase
             .FirstOrDefaultAsync();
 
         if (entity is null) return NotFound();
+        if (await NganhKhongHopLe(entity.MaNganhHoc)) return Forbid();
         return Ok(entity);
     }
 
     [HttpPost]
     public async Task<ActionResult<KhoaHocNganhDto>> Create(CreateKhoaHocNganhRequest request)
     {
+        if (await NganhKhongHopLe(request.MaNganhHoc)) return Forbid();
+
         var ten = request.TenKhoaHoc.Trim();
         if (string.IsNullOrWhiteSpace(ten))
             return BadRequest(new { message = "Tên khoá học không được để trống" });
@@ -97,6 +116,9 @@ public class KhoaHocNganhController : ControllerBase
     {
         var entity = await _db.KhoaHocNganhs.FindAsync(id);
         if (entity is null) return NotFound();
+
+        if (await NganhKhongHopLe(entity.MaNganhHoc) || await NganhKhongHopLe(request.MaNganhHoc))
+            return Forbid();
 
         var ten = request.TenKhoaHoc.Trim();
         if (string.IsNullOrWhiteSpace(ten))
@@ -130,6 +152,8 @@ public class KhoaHocNganhController : ControllerBase
             .FirstOrDefaultAsync(k => k.MaKhoaHocNganh == id);
 
         if (entity is null) return NotFound();
+
+        if (await NganhKhongHopLe(entity.MaNganhHoc)) return Forbid();
 
         if (entity.NhomLopNganhs.Count > 0)
             return Conflict(new { message = "Không thể xoá: khoá học ngành đang có nhóm lớp liên kết" });

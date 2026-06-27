@@ -14,6 +14,7 @@ import { type MonHoc, getMonHocs } from '../../../services/monHocService';
 import { type BoMon, getBoMons } from '../../../services/boMonService';
 import { type KhoaVien, getKhoaViens } from '../../../services/khoaVienService';
 import Modal from '../../../components/Modal';
+import { usePortalBase } from '../../../hooks/usePortalBase';
 
 const MIN_KY_HOC_COLUMNS = 8;
 
@@ -21,6 +22,7 @@ export default function KhungChuongTrinhDetailPage() {
   const { id } = useParams<{ id: string }>();
   const maKhungChuongTrinh = Number(id);
   const navigate = useNavigate();
+  const portalBase = usePortalBase();
 
   const [khung, setKhung] = useState<KhungChuongTrinh | null>(null);
   const [monHocsTrongKhung, setMonHocsTrongKhung] = useState<MonHocTrongKhung[]>([]);
@@ -169,7 +171,7 @@ export default function KhungChuongTrinhDetailPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => navigate('/admin/danh-muc/khung-chuong-trinh')}
+            onClick={() => navigate(`${portalBase}/danh-muc/khung-chuong-trinh`)}
             className="flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
           >
             <ArrowLeft className="h-3.5 w-3.5" /> Quay lại

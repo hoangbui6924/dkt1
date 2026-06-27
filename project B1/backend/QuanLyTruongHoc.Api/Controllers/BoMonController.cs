@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.BoMon;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -13,17 +14,32 @@ namespace QuanLyTruongHoc.Api.Controllers;
 public class BoMonController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public BoMonController(AppDbContext db)
+    public BoMonController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // Giảng viên chỉ được thao tác bộ môn thuộc khoa viện của mình (khoa viện null = không hợp lệ với GV).
+    private async Task<bool> KhoaVienKhongHopLe(int? maKhoaVien)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        return maKhoaVien == null || scope?.MaKhoaVien != maKhoaVien;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<BoMonDto>>> GetAll()
     {
-        var result = await _db.BoMons
-            .Include(b => b.KhoaVien)
+        var query = _db.BoMons.Include(b => b.KhoaVien).AsQueryable();
+
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+            query = query.Where(b => b.MaKhoaVien == (scope != null ? scope.MaKhoaVien : -1));
+
+        var result = await query
             .OrderBy(b => b.TenBoMon)
             .Select(b => new BoMonDto(
                 b.MaBoMon,
@@ -47,6 +63,7 @@ public class BoMonController : ControllerBase
             .FirstOrDefaultAsync();
 
         if (entity is null) return NotFound();
+        if (await KhoaVienKhongHopLe(entity.MaKhoaVien)) return Forbid();
         return Ok(entity);
     }
 
@@ -56,6 +73,8 @@ public class BoMonController : ControllerBase
         var ten = request.TenBoMon.Trim();
         if (string.IsNullOrWhiteSpace(ten))
             return BadRequest(new { message = "Tên bộ môn không được để trống" });
+
+        if (await KhoaVienKhongHopLe(request.MaKhoaVien)) return Forbid();
 
         KhoaVien? khoaVien = null;
         if (request.MaKhoaVien.HasValue)
@@ -82,6 +101,9 @@ public class BoMonController : ControllerBase
     {
         var entity = await _db.BoMons.FindAsync(id);
         if (entity is null) return NotFound();
+
+        if (await KhoaVienKhongHopLe(entity.MaKhoaVien) || await KhoaVienKhongHopLe(request.MaKhoaVien))
+            return Forbid();
 
         var ten = request.TenBoMon.Trim();
         if (string.IsNullOrWhiteSpace(ten))
@@ -115,6 +137,8 @@ public class BoMonController : ControllerBase
             .FirstOrDefaultAsync(b => b.MaBoMon == id);
 
         if (entity is null) return NotFound();
+
+        if (await KhoaVienKhongHopLe(entity.MaKhoaVien)) return Forbid();
 
         if (entity.MonHocs.Count > 0 || entity.GiangViens.Count > 0)
             return Conflict(new { message = "Không thể xoá: bộ môn đang có môn học hoặc giảng viên liên kết" });

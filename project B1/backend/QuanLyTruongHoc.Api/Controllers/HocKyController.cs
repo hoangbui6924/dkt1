@@ -68,6 +68,7 @@ public class HocKyController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<HocKyDto>> Create(CreateHocKyRequest request)
     {
         var ten = request.TenHocKy.Trim();
@@ -113,6 +114,7 @@ public class HocKyController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(int id, UpdateHocKyRequest request)
     {
         var entity = await _db.HocKys.FindAsync(id);
@@ -151,6 +153,7 @@ public class HocKyController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(int id)
     {
         var entity = await _db.HocKys

@@ -12,6 +12,7 @@ import {
 import { type NganhHoc, getNganhHocs } from '../../../services/nganhHocService';
 import Modal from '../../../components/Modal';
 import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumnFilter';
+import { usePortalBase } from '../../../hooks/usePortalBase';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -28,6 +29,7 @@ type SortField = 'tenNganh' | 'khoaVien' | 'tongTinChi' | 'batBuoc' | 'tuChon' |
 
 export default function KhungChuongTrinhPage() {
   const navigate = useNavigate();
+  const portalBase = usePortalBase();
   const [nganhHocs, setNganhHocs] = useState<NganhHoc[]>([]);
   const [khungs, setKhungs] = useState<KhungModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -429,7 +431,7 @@ export default function KhungChuongTrinhPage() {
                           <>
                             <button
                               type="button"
-                              onClick={() => navigate(`/admin/danh-muc/khung-chuong-trinh/${k.maKhungChuongTrinh}`)}
+                              onClick={() => navigate(`${portalBase}/danh-muc/khung-chuong-trinh/${k.maKhungChuongTrinh}`)}
                               className="flex items-center gap-1 rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700"
                             >
                               <Settings2 className="h-3.5 w-3.5" /> Thiết kế

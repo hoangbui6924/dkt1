@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuanLyTruongHoc.Application.DTOs.KhungChuongTrinh;
+using QuanLyTruongHoc.Application.Interfaces;
 using QuanLyTruongHoc.Domain.Entities;
 using QuanLyTruongHoc.Infrastructure.Persistence;
 
@@ -13,10 +14,28 @@ namespace QuanLyTruongHoc.Api.Controllers;
 public class KhungChuongTrinhController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ITeacherScopeService _scope;
 
-    public KhungChuongTrinhController(AppDbContext db)
+    public KhungChuongTrinhController(AppDbContext db, ITeacherScopeService scope)
     {
         _db = db;
+        _scope = scope;
+    }
+
+    // Khung thuộc 1 ngành -> khoa viện của ngành. GV chỉ thao tác khung thuộc khoa viện mình.
+    private async Task<bool> NganhKhongHopLe(int maNganhHoc)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var scope = await _scope.ResolveAsync(User);
+        var maKv = await _db.NganhHocs.Where(n => n.MaNganh == maNganhHoc).Select(n => (int?)n.MaKhoaVien).FirstOrDefaultAsync();
+        return scope?.MaKhoaVien != maKv;
+    }
+
+    private async Task<bool> KhungKhongHopLe(int maKhung)
+    {
+        if (!_scope.IsGiangVien(User)) return false;
+        var maNganh = await _db.KhungChuongTrinhs.Where(k => k.MaKhungChuongTrinh == maKhung).Select(k => (int?)k.MaNganhHoc).FirstOrDefaultAsync();
+        return maNganh == null || await NganhKhongHopLe(maNganh.Value);
     }
 
     private async Task<KhungChuongTrinhDto> ToDto(KhungChuongTrinh k)
@@ -44,10 +63,15 @@ public class KhungChuongTrinhController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<KhungChuongTrinhDto>>> GetAll()
     {
-        var khungs = await _db.KhungChuongTrinhs
+        var query = _db.KhungChuongTrinhs
             .Include(k => k.NganhHoc).ThenInclude(n => n!.KhoaVien)
-            .OrderBy(k => k.NganhHoc!.TenNganh)
-            .ToListAsync();
+            .AsQueryable();
+
+        var scope = await _scope.ResolveAsync(User);
+        if (_scope.IsGiangVien(User))
+            query = query.Where(k => k.NganhHoc!.MaKhoaVien == (scope != null ? scope.MaKhoaVien : -1));
+
+        var khungs = await query.OrderBy(k => k.NganhHoc!.TenNganh).ToListAsync();
 
         var result = new List<KhungChuongTrinhDto>();
         foreach (var k in khungs)
@@ -64,12 +88,15 @@ public class KhungChuongTrinhController : ControllerBase
             .FirstOrDefaultAsync(k => k.MaKhungChuongTrinh == id);
 
         if (entity is null) return NotFound();
+        if (await NganhKhongHopLe(entity.MaNganhHoc)) return Forbid();
         return Ok(await ToDto(entity));
     }
 
     [HttpGet("by-nganh/{maNganh:int}")]
     public async Task<ActionResult<KhungChuongTrinhDto>> GetByNganh(int maNganh)
     {
+        if (await NganhKhongHopLe(maNganh)) return Forbid();
+
         var entity = await _db.KhungChuongTrinhs
             .Include(k => k.NganhHoc).ThenInclude(n => n!.KhoaVien)
             .FirstOrDefaultAsync(k => k.MaNganhHoc == maNganh);
@@ -81,6 +108,8 @@ public class KhungChuongTrinhController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<KhungChuongTrinhDto>> Create(CreateKhungChuongTrinhRequest request)
     {
+        if (await NganhKhongHopLe(request.MaNganhHoc)) return Forbid();
+
         var nganh = await _db.NganhHocs.FindAsync(request.MaNganhHoc);
         if (nganh is null)
             return BadRequest(new { message = "Ngành học không tồn tại" });
@@ -111,6 +140,8 @@ public class KhungChuongTrinhController : ControllerBase
         var entity = await _db.KhungChuongTrinhs.FindAsync(id);
         if (entity is null) return NotFound();
 
+        if (await NganhKhongHopLe(entity.MaNganhHoc)) return Forbid();
+
         if (request.TongTinChi <= 0 || request.SoTinChiBatBuoc < 0 || request.SoTinChiTuChonToiThieu < 0)
             return BadRequest(new { message = "Số tín chỉ không hợp lệ" });
 
@@ -128,6 +159,8 @@ public class KhungChuongTrinhController : ControllerBase
         var entity = await _db.KhungChuongTrinhs.FindAsync(id);
         if (entity is null) return NotFound();
 
+        if (await NganhKhongHopLe(entity.MaNganhHoc)) return Forbid();
+
         _db.KhungChuongTrinhs.Remove(entity);
         await _db.SaveChangesAsync();
 
@@ -139,6 +172,7 @@ public class KhungChuongTrinhController : ControllerBase
     {
         var exists = await _db.KhungChuongTrinhs.AnyAsync(k => k.MaKhungChuongTrinh == id);
         if (!exists) return NotFound();
+        if (await KhungKhongHopLe(id)) return Forbid();
 
         var rows = await _db.MonHocThuocKhungChuongTrinhs
             .Where(m => m.MaKhungChuongTrinh == id)
@@ -171,6 +205,8 @@ public class KhungChuongTrinhController : ControllerBase
         var khung = await _db.KhungChuongTrinhs.FindAsync(id);
         if (khung is null) return NotFound();
 
+        if (await NganhKhongHopLe(khung.MaNganhHoc)) return Forbid();
+
         if (request.KyHoc <= 0)
             return BadRequest(new { message = "Kỳ học không hợp lệ" });
 
@@ -201,6 +237,8 @@ public class KhungChuongTrinhController : ControllerBase
         var entity = await _db.MonHocThuocKhungChuongTrinhs.FindAsync(ma);
         if (entity is null) return NotFound();
 
+        if (await KhungKhongHopLe(entity.MaKhungChuongTrinh)) return Forbid();
+
         if (request.KyHoc <= 0)
             return BadRequest(new { message = "Kỳ học không hợp lệ" });
 
@@ -215,6 +253,8 @@ public class KhungChuongTrinhController : ControllerBase
     {
         var entity = await _db.MonHocThuocKhungChuongTrinhs.FindAsync(ma);
         if (entity is null) return NotFound();
+
+        if (await KhungKhongHopLe(entity.MaKhungChuongTrinh)) return Forbid();
 
         _db.MonHocThuocKhungChuongTrinhs.Remove(entity);
         await _db.SaveChangesAsync();

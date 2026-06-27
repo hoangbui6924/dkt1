@@ -16,7 +16,7 @@ import ExcelColumnFilter, { type SortDir } from '../../../components/ExcelColumn
 const ITEMS_PER_PAGE = 15;
 
 type AttachMode = 'boMon' | 'khoaVien';
-type SortField = 'hoTen' | 'boMonKhoaVien' | 'email' | 'soDienThoai' | 'taiKhoan' | 'soLopDangDay';
+type SortField = 'hoTen' | 'boMonKhoaVien' | 'email' | 'soDienThoai' | 'soLopDangDay';
 
 const EMPTY_FORM: GiangVienInput = { hoTen: '', maBoMon: null, maKhoaVien: null, email: '', soDienThoai: '' };
 
@@ -42,7 +42,6 @@ export default function GiangVienPage() {
   const [filterBoMonKhoaVien, setFilterBoMonKhoaVien] = useState<Set<string> | null>(null);
   const [filterEmail, setFilterEmail] = useState<Set<string> | null>(null);
   const [filterSoDienThoai, setFilterSoDienThoai] = useState<Set<string> | null>(null);
-  const [filterTaiKhoan, setFilterTaiKhoan] = useState<Set<string> | null>(null);
   const [filterSoLopDangDay, setFilterSoLopDangDay] = useState<Set<string> | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -107,13 +106,6 @@ export default function GiangVienPage() {
         .map((v) => ({ value: v, label: v })),
     [items],
   );
-  const optionsTaiKhoan = useMemo(
-    () =>
-      [...new Set(items.map((i) => i.tenDangNhapTaiKhoan ?? '-'))]
-        .sort((a, b) => a.localeCompare(b))
-        .map((v) => ({ value: v, label: v })),
-    [items],
-  );
   const optionsSoLopDangDay = useMemo(
     () =>
       [...new Set(items.map((i) => i.soLopDangDay))]
@@ -132,7 +124,6 @@ export default function GiangVienPage() {
     if (filterBoMonKhoaVien) result = result.filter((i) => filterBoMonKhoaVien.has(boMonKhoaVienLabel(i)));
     if (filterEmail) result = result.filter((i) => filterEmail.has(i.email ?? '-'));
     if (filterSoDienThoai) result = result.filter((i) => filterSoDienThoai.has(i.soDienThoai ?? '-'));
-    if (filterTaiKhoan) result = result.filter((i) => filterTaiKhoan.has(i.tenDangNhapTaiKhoan ?? '-'));
     if (filterSoLopDangDay) result = result.filter((i) => filterSoLopDangDay.has(String(i.soLopDangDay)));
 
     result = [...result].sort((a, b) => {
@@ -150,9 +141,6 @@ export default function GiangVienPage() {
         case 'soDienThoai':
           cmp = (a.soDienThoai ?? '-').localeCompare(b.soDienThoai ?? '-');
           break;
-        case 'taiKhoan':
-          cmp = (a.tenDangNhapTaiKhoan ?? '-').localeCompare(b.tenDangNhapTaiKhoan ?? '-');
-          break;
         case 'soLopDangDay':
           cmp = a.soLopDangDay - b.soLopDangDay;
           break;
@@ -169,7 +157,6 @@ export default function GiangVienPage() {
     filterBoMonKhoaVien,
     filterEmail,
     filterSoDienThoai,
-    filterTaiKhoan,
     filterSoLopDangDay,
   ]);
 
@@ -373,7 +360,7 @@ export default function GiangVienPage() {
                   />
                 </div>
               </th>
-              <th className="w-56 border-b border-r border-gray-200 px-3 py-2 text-left">
+              <th className="w-90 border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Bộ môn / Khoa viện</span>
                   <ExcelColumnFilter
@@ -389,7 +376,7 @@ export default function GiangVienPage() {
                   />
                 </div>
               </th>
-              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left">
+              <th className="w-60 border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Email</span>
                   <ExcelColumnFilter
@@ -405,7 +392,7 @@ export default function GiangVienPage() {
                   />
                 </div>
               </th>
-              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left">
+              <th className="w-48 border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Số điện thoại</span>
                   <ExcelColumnFilter
@@ -421,23 +408,7 @@ export default function GiangVienPage() {
                   />
                 </div>
               </th>
-              <th className="w-36 border-b border-r border-gray-200 px-3 py-2 text-left">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-sm font-semibold text-gray-600">Tài khoản</span>
-                  <ExcelColumnFilter
-                    options={optionsTaiKhoan}
-                    selected={filterTaiKhoan}
-                    onChange={(s) => {
-                      setFilterTaiKhoan(s);
-                      setPage(1);
-                    }}
-                    sortDir={sortField === 'taiKhoan' ? sortDir : null}
-                    onSort={(dir) => setSort('taiKhoan', dir)}
-                    sortLabels={['A → Z', 'Z → A']}
-                  />
-                </div>
-              </th>
-              <th className="w-28 border-b border-r border-gray-200 px-3 py-2 text-left">
+              <th className="w-40  border-b border-r border-gray-200 px-3 py-2 text-left">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-sm font-semibold text-gray-600">Số lớp dạy</span>
                   <ExcelColumnFilter
@@ -462,7 +433,7 @@ export default function GiangVienPage() {
           <tbody className="divide-y divide-gray-100">
             {loading && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                   Đang tải...
                 </td>
               </tr>
@@ -470,7 +441,7 @@ export default function GiangVienPage() {
 
             {!loading && paginated.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                   <Users className="mx-auto mb-2 h-10 w-10 opacity-40" />
                   <p>Không có dữ liệu</p>
                 </td>
@@ -508,10 +479,7 @@ export default function GiangVienPage() {
                     <td className="w-36 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
                       {item.soDienThoai ?? <span className="text-gray-400">-</span>}
                     </td>
-                    <td className="w-36 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
-                      {item.tenDangNhapTaiKhoan ?? <span className="text-gray-400">-</span>}
-                    </td>
-                    <td className="w-28 border-r border-gray-200 px-3 py-2 text-sm text-gray-700">
+                    <td className="w-28 border-r border-gray-200 px-3 py-2 text-sm text-gray-700 text-center">
                       {item.soLopDangDay}
                     </td>
                     <td className="w-28 px-3 py-2">
